@@ -1,6 +1,7 @@
 const axios = require('axios').default;
 const util = require('util')
 const _ = require('lodash')
+const datefns = require('date-fns')
 
 let log = console.log;
 // letgit push  echo = (x) => {console.log(util.inspect(x))}
@@ -115,6 +116,10 @@ let addCards = async (lists, allCards, customFieldNames)=> {
 				let lookedUpCard = _.find(allCards, c => {return c.id == card.id})
 				let filteredCard = _.pick(lookedUpCard, ['customFieldItems']);
 
+				if (card.labels.length == 0) {
+					delete card.labels
+				}
+
 		
 				//For each user supplied custom field name, filter for that field only 
 				let customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
@@ -150,6 +155,8 @@ let addCards = async (lists, allCards, customFieldNames)=> {
 
 let makeBillingReport = async (lists) => {
 
+	let now = Date.now()
+
 	let report = {
 		perProject:[
 
@@ -157,7 +164,8 @@ let makeBillingReport = async (lists) => {
 		totals:{
 			placed:0,
 			billing: 0,
-			nonBilling: 0
+			nonBilling: 0,
+			pendingStartDate: 0
 		}
 	}
 
@@ -170,7 +178,9 @@ let makeBillingReport = async (lists) => {
 				consultants: {
 					placed: 0,
 					billing: 0,
-					nonBilling: 0
+					nonBilling: 0,
+					pendingStartDate: 0
+
 				}
 			}
 
@@ -179,12 +189,29 @@ let makeBillingReport = async (lists) => {
 				projectTotals.consultants.placed++ 
 
 				let billing = true;
-				card.labels.forEach((label)=>{
-					if (label.name == "non billing") {
-						billing = false	
-					} 
 
-				})
+				if (card["label"]) {
+					card.labels.forEach((label)=>{
+						if (label.name == "non billing") {
+							billing = false	
+						} 
+
+					})
+				}
+
+				if (card["customFieldItems"]) {
+					card.customFieldItems.forEach((field)=>{
+						if (field.name == "Project Start Date") {
+							let projectStartDate = Date.parse(field.value.date)
+							if (datefns.compareAsc(Date.now(), projectStartDate) == -1) {
+								billing = false
+								projectTotals.consultants.pendingStartDate++
+							} 
+						} 
+
+					})
+				}
+
 				if (billing) {
 					projectTotals.consultants.billing++
 				} else {
@@ -204,7 +231,8 @@ let makeBillingReport = async (lists) => {
 		(acc, project) => {
 			acc.billing += project.consultants.billing	
 			acc.nonBilling += project.consultants.nonBilling
-			acc.placed += project.consultants.placed				
+			acc.placed += project.consultants.placed
+			acc.pendingStartDate += project.consultants.pendingStartDate				
 			return acc
 		},
 		report.totals
