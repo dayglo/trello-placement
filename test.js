@@ -31,24 +31,25 @@ let queryParams = {
 
 async function main(){
 
-	// let projectStartDateFieldId = (await getCustomFieldDefinitionFromName("Project Start Date")).id
-
-	// echo(projectStartDateFieldId)
-
+	//Get Pertinent trello data in a clean intermediate format
 	let cardData = await getAllBoardData(boardId)
-	// echo(cardData)
-
 	let lists = await getLists()
-	let listsAndCards = await addCards(lists, cardData, ["Project Start Date"])
-
-
+	let listsAndCards = await addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills"])
 	echo(listsAndCards)
 
+	// Show totals
 	let outputReport = await makeBillingReport(listsAndCards)
-
 	echo(outputReport)
 
+	// Get Engineer project move history 
+	let moveActions = await getAllMoveActions(boardId)
+	let moveList = await getMoveListForCard("6008456fcc5b0626995685c1",moveActions,lists)
+
+	echo(moveList)
+
+
 }
+
 
 let getAllBoardData = async (boardId) => {
 	let params = {
@@ -58,8 +59,38 @@ let getAllBoardData = async (boardId) => {
 	return (await get(`boards/${boardId}/cards`, params)).data
 }
 
+let getAllMoveActions = async (boardId, cardData) => {
+	let params = {
+		filter: "updateCard",
+		since: datefns.subDays(Date.now(),7)
+	}
+	let response = await get(`boards/${boardId}/actions`, params)
 
+	return _.filter( response.data, (action) =>{
+		if (typeof action.data.old["idList"] !== "undefined"){
+			return action
+		}
+	})
 
+}
+
+let getMoveListForCard = async (cardId, moveActions, lists) => {
+
+	let cards = _.filter(moveActions,(action)=>{
+		return (action.data.card.id == cardId)
+	})
+
+	let moves = _.map(cards,(card)=>{
+		return {
+			from: card.data.listBefore.name,
+			to: card.data.listAfter.name,
+			date: Date.parse(card.date)
+		}
+	})
+
+	return moves
+
+}
 
 let get = async (path, extraParams) => {
 
@@ -82,7 +113,7 @@ let get = async (path, extraParams) => {
 // curl https://api.trello.com/1/boards/5a00adcebe1991022b4a4bb4/cards/?fields=name&customFieldItems=true&key={APIKey}&token={APIToken}
 
 let getCustomFieldDefinitionFromName = async (customFieldName) => {
-	let response = await get(`boards/n6VBFMpa/customFields`)
+	let response = await get(`boards/${boardId}/customFields`)
 		
 	let projectStartDateField = response.data.filter(field => {return (field.name == customFieldName)})
 	
@@ -94,7 +125,7 @@ let getCustomFieldDefinitionFromName = async (customFieldName) => {
 
 
 let getLists = async () => {
-	let response = await get(`boards/n6VBFMpa/lists`)
+	let response = await get(`boards/${boardId}/lists`)
 	return _.map(response.data, _.partialRight(_.pick,["id","name"]))
 }
 
@@ -102,7 +133,7 @@ let getLists = async () => {
 
 let addCards = async (lists, allCards, customFieldNames)=> {
 
-	let c = await get(`boards/n6VBFMpa/customFields`)
+	let c = await get(`boards/${boardId}/customFields`)
 	let customFieldData = c.data;
 
 	return Promise.all(
