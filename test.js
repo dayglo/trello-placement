@@ -1,8 +1,9 @@
 const axios = require('axios').default;
 const util = require('util')
+const _ = require('lodash')
 
 let log = console.log;
-// let echo = (x) => {console.log(util.inspect(x))}
+// letgit push  echo = (x) => {console.log(util.inspect(x))}
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
 
 
@@ -17,6 +18,7 @@ if (!("TRELLO_KEY" in process.env)) {
 }
 
 let url = "https://api.trello.com/1"
+let boardId = "n6VBFMpa"
 
 let queryParams = {
 	key: process.env.TRELLO_KEY,
@@ -28,16 +30,18 @@ let queryParams = {
 
 async function main(){
 
-	getCustomFieldDefinitions()
+	// let projectStartDateFieldId = (await getCustomFieldDefinitionFromName("Project Start Date")).id
+
+	// echo(projectStartDateFieldId)
+
+	let cardData = await getAllBoardData(boardId)
+	// echo(cardData)
 
 	let lists = await getLists()
-	let listsAndCards = await addCards(lists)
-
-	//echo (await getAllBoardData('n6VBFMpa'))
+	let listsAndCards = await addCards(lists, cardData, ["Project Start Date"])
 
 
-
-
+	echo(listsAndCards)
 
 	let outputReport = await makeBillingReport(listsAndCards)
 
@@ -47,9 +51,10 @@ async function main(){
 
 let getAllBoardData = async (boardId) => {
 	let params = {
-		cards: "open"
+		cards: "open",
+		customFieldItems : true 
 	}
-	return (await get(`boards/${boardId}`, params)).data
+	return (await get(`boards/${boardId}/cards`, params)).data
 }
 
 
@@ -57,25 +62,30 @@ let getAllBoardData = async (boardId) => {
 
 let get = async (path, extraParams) => {
 
-
-	return await axios.get(`${url}/${path}`,
-		{
-			params: {
-				...queryParams, 
-				...extraParams
+	try {
+		return await axios.get(`${url}/${path}`,
+			{
+				params: {
+					...queryParams, 
+					...extraParams
+				}
 			}
-		}
-	)
+		)
+	}
+	catch (e){
+		log("error making request: " +e)
+	}
 }
 
 
 // curl https://api.trello.com/1/boards/5a00adcebe1991022b4a4bb4/cards/?fields=name&customFieldItems=true&key={APIKey}&token={APIToken}
 
-let getCustomFieldDefinitions = async () => {
+let getCustomFieldDefinitionFromName = async (customFieldName) => {
 	let response = await get(`boards/n6VBFMpa/customFields`)
 		
-	let projectStartDateField = response.data.filter(field => {return (field.name == "Project Start Date")})
+	let projectStartDateField = response.data.filter(field => {return (field.name == customFieldName)})
 	
+	return projectStartDateField[0]
 	// echo(projectStartDateField)
 
 }
@@ -84,16 +94,55 @@ let getCustomFieldDefinitions = async () => {
 
 let getLists = async () => {
 	let response = await get(`boards/n6VBFMpa/lists`)
-	return response.data
+	return _.map(response.data, _.partialRight(_.pick,["id","name"]))
 }
 
 
-let addCards = async (lists)=> {
+
+let addCards = async (lists, allCards, customFieldNames)=> {
+
+	let c = await get(`boards/n6VBFMpa/customFields`)
+	let customFieldData = c.data;
+
 	return Promise.all(
 		lists.map(async (list)=>{
-			let cards = await get(`lists/${list.id}/cards`)
-			list.cards = cards.data
-			echo(cards.data)
+			let listCards = await get(`lists/${list.id}/cards`)
+
+			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'labels']));
+
+			list.cards = listCards2.map((card) => {
+
+				let lookedUpCard = _.find(allCards, c => {return c.id == card.id})
+				let filteredCard = _.pick(lookedUpCard, ['customFieldItems']);
+
+		
+				//For each user supplied custom field name, filter for that field only 
+				let customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
+
+					let targetField = _.find(customFieldData, f => { return f.name == targetFieldName } )
+					
+					let customField = _.find(filteredCard.customFieldItems, f => {return f.idCustomField == targetField.id})
+					if (customField) {
+						customField.name = targetFieldName
+						acc.push(customField)
+					}
+					return acc
+					
+				},[])
+
+				if (customFieldItems.length > 0) {
+					filteredCard.customFieldItems = customFieldItems
+				} else {
+					delete filteredCard.customFieldItems
+				}
+				
+
+				let result =  {
+					...card,
+					...filteredCard
+				}
+				return result;
+			})
 			return list
 		})
 	)
