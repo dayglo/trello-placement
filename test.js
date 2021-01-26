@@ -114,9 +114,9 @@ async function main(){
 				console.log("Billing report: the hash is the same so don't re-update the board")
 			} else {
 				console.log("Billing report: re-update the board")
-				put(`cards/${billingReportCardId}`,{},{
-					desc: formatDescription(outputReport)
-				})
+
+
+
 				let imageLocation = createImageFile(
 					billingTextFn(
 						outputReport.totals.billing,
@@ -126,7 +126,12 @@ async function main(){
 					"billing-" + dateString 
 				)[0]
 
-				await uploadAttachment(imageLocation, billingReportCardId)
+				let attachment = await uploadAttachment(imageLocation, billingReportCardId)
+				put(`cards/${billingReportCardId}`,{},{
+					desc: formatDescription(outputReport),
+					idAttachmentCover: attachment.id
+				})
+
 				await fsWriteFile("/tmp/billingReport.txt", reportHash, "utf8")
 			}
 
@@ -145,7 +150,6 @@ async function main(){
 				console.log("Move report: the hash is the same so don't re-update the board")
 			} else {
 				console.log("Move report: re-update the board")
-				put(`cards/${moveReportCardId}`,{},{desc: formatDescription(manualMoveReports)})
 
 				let moveReportImageLocation = createImageFile(
 					movesTextFn(manualMoveReports),
@@ -154,7 +158,13 @@ async function main(){
 					20 + (200 * manualMoveReports.length)
 				)[0]
 
-				await uploadAttachment(moveReportImageLocation, moveReportCardId)
+				attachment = await uploadAttachment(moveReportImageLocation, moveReportCardId)
+				
+				put(`cards/${moveReportCardId}`,{},{
+					desc: formatDescription(manualMoveReports),
+					idAttachmentCover: attachment.id
+				})
+				
 				await fsWriteFile("/tmp/moveReport.txt", reportHash, "utf8")
 			}
 
@@ -173,7 +183,6 @@ async function main(){
 				console.log("Starter Report: the hash is the same so don't re-update the board")
 			} else {
 				console.log("Starter report: re-update the board")
-				put(`cards/${starterReportCardId}`,{},{desc: formatDescription(starterReport)})
 
 				let starterReportImageLocation = createImageFile(
 					starterTextFn(starterReport),
@@ -182,7 +191,13 @@ async function main(){
 					20 + (200 * starterReport.length)
 				)[0]
 
-				await uploadAttachment(starterReportImageLocation, starterReportCardId)
+				attachment = await uploadAttachment(starterReportImageLocation, starterReportCardId)
+				put(`cards/${starterReportCardId}`,{},{
+					desc: formatDescription(starterReport),
+					idAttachmentCover: attachment.id
+				})
+
+
 				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
 			}
@@ -211,7 +226,7 @@ let uploadAttachment = async (imageLocation, cardId) => {
 
 			function attachmentCallback(err, httpResponse, body) {
 				if (httpResponse.statusCode == 200) {
-					resolve("successfully attached the file " );
+					resolve(JSON.parse(body));
 				} else {
 					reject('Could not attach the file to card:', httpResponse.statusMessage);
 				}
@@ -283,7 +298,7 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 	drawFn(rect, text)
 
 	const buffer = canvas.toBuffer('image/png')
-	let fileName = `./generated-report-${outputFileName}.png` 
+	let fileName = `/tmp/generated-report-${outputFileName}.png` 
 	fs.writeFileSync(fileName, buffer)
 	return [fileName, buffer]
 
