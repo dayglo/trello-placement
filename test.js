@@ -97,11 +97,12 @@ async function main(){
 					billingTextFn(
 						outputReport.totals.billing,
 						outputReport.totals.nonBilling,
-						outputReport.totals.pendingStartDate
+						outputReport.totals.pendingStartDate,
+						outputReport.totals.lab,
 					),
 					"billing-" + dateString,
 					1200,
-					1000
+					700
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -204,8 +205,6 @@ async function main(){
 				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
 			}
-
-			//snap vacancy cards back.
 
 
 
@@ -324,7 +323,8 @@ let makeBillingReport = async (lists) => {
 			placed:0,
 			billing: 0,
 			nonBilling: 0,
-			pendingStartDate: 0
+			pendingStartDate: 0,
+			lab: 0
 		}
 	}
 
@@ -344,20 +344,26 @@ let makeBillingReport = async (lists) => {
 
 			list.cards.forEach((card=>{
 
-				projectTotals.consultants.placed++ 
 
 				let billing = true;
+				let vacancy = false;
+				let placed = false;
 
-				if (card["label"]) {
+				if (card["labels"]) {
 					card.labels.forEach((label)=>{
 						if (label.name == "non billing") {
 							billing = false	
+							placed = true;
 						} 
+
+						if (label.name == "Vacancy") {
+							vacancy = true	
+						}
 
 					})
 				}
-
-				if (card["customFieldItems"]) {
+				 
+				if ((card["customFieldItems"] && !vacancy)) {
 					card.customFieldItems.forEach((field)=>{
 						if (field.name == "Project Start Date") {
 							let projectStartDate = Date.parse(field.value.date)
@@ -370,11 +376,21 @@ let makeBillingReport = async (lists) => {
 					})
 				}
 
-				if (billing) {
-					projectTotals.consultants.billing++
-				} else {
-					projectTotals.consultants.nonBilling++
+				if (!vacancy) {
+
+					if (list.name = "Innovation Lab" )  {
+						report.totals.lab++
+					}
+
+					if (placed) projectTotals.consultants.placed++
+
+					if (billing) {
+						projectTotals.consultants.billing++
+					} else {
+						projectTotals.consultants.nonBilling++
+					}
 				}
+
 				
 
 			}))
