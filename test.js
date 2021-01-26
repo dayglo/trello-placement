@@ -1,11 +1,8 @@
-const axios = require('axios').default;
 const util = require('util')
 const _ = require('lodash')
 const date = require('date-fns')
 const chalk = require("chalk")
 const fs = require('fs')
-const FormData = require('form-data');
-const request = require("request")
 
 const crypto = require('crypto');
 
@@ -14,32 +11,13 @@ const fsReadFile = util.promisify(fs.readFile);
 
 const { createCanvas, loadImage } = require('canvas')
 
+const trello = require ('./trello.js')
+
 let log = console.log;
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
 let title = (x) => {console.log(chalk.red(x + "\n---------------------------------------------------------------------"))}
 
-
-if (!("TRELLO_TOKEN" in process.env)) {
-    console.log('No TRELLO_TOKEN  has been set.');
-    process.exit(1)
-}
-
-if (!("TRELLO_KEY" in process.env)) {
-    console.log('No TRELLO_KEY has been set.');
-    process.exit(1)
-}
-
-let url = "https://api.trello.com/1"
 let boardId = "n6VBFMpa"
-
-
-let queryParams = {
-	key: process.env.TRELLO_KEY,
-	token: process.env.TRELLO_TOKEN
-}
-
-let queryString = `key=${process.env.TRELLO_KEY}&token=${process.env.TRELLO_TOKEN}`
-
 
 let projectNameForName = (cardName) => {
 		let matches = cardName.match(/^((p|P)roject|PROJECT) - (.+)/) 
@@ -85,9 +63,9 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			//Get Pertinent trello data in a clean intermediate format
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let cardData = await getAllBoardData(boardId)
-			let lists = await getLists()
-			let listsAndCards = await addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills"])
+			let cardData = await trello.getAllBoardData(boardId)
+			let lists = await trello.getLists()
+			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills"])
 
 			let listsAndCards2 = listsAndCards.map(l => {
 				let result = projectNameForName(l.name)
@@ -126,17 +104,17 @@ async function main(){
 					1000
 				)[0]
 
-				let attachments = await get(`/cards/${billingReportCardId}/attachments`)
-				let newAttachment = await uploadAttachment(imageLocation, billingReportCardId)
+				let attachments = await trello.getAttachments(billingReportCardId)
+				let newAttachment = await trello.uploadAttachment(imageLocation, billingReportCardId)
 				
 				log ("deleting " + attachments.data.length + " old attachments")
 				await Promise.all(
 					attachments.data.map(a => {
-						return del(`/cards/${billingReportCardId}/attachments/${a.id}`)
+						return trello.deleteAttachment(billingReportCardId, a.id)
 					})
 				)
 
-				put(`cards/${billingReportCardId}`,{},{
+				await trello.updateCard(billingReportCardId,{
 					desc: formatDescription(outputReport),
 					idAttachmentCover: newAttachment.id
 				})
@@ -149,7 +127,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let moveReportCardId = 'o5RSYrsE'
 
-			let manualMoveReports = await getManualMoveActions(cardData)
+			let manualMoveReports = await trello.getManualMoveActions(boardId, cardData, projectNameForName)
 			title("Manual Moves this week")
 			echo(manualMoveReports)
 
@@ -167,19 +145,17 @@ async function main(){
 					20 + (200 * manualMoveReports.length)
 				)[0]
 
-
-				attachments = await get(`/cards/${moveReportCardId}/attachments`)
-				newAttachment = await uploadAttachment(moveReportImageLocation, moveReportCardId)
+				attachments = await trello.getAttachments(moveReportCardId)
+				newAttachment = await trello.uploadAttachment(moveReportImageLocation, moveReportCardId)
 				
 				log ("deleting " + attachments.data.length + " old attachments")
 				await Promise.all(
 					attachments.data.map(a => {
-						return del(`/cards/${moveReportCardId}/attachments/${a.id}`)
+						return trello.deleteAttachment(moveReportCardId, a.id)
 					})
 				)
 
-				
-				put(`cards/${moveReportCardId}`,{},{
+				await trello.updateCard(moveReportCardId,{
 					desc: formatDescription(manualMoveReports),
 					idAttachmentCover: newAttachment.id
 				})
@@ -210,21 +186,20 @@ async function main(){
 					20 + (200 * starterReport.length)
 				)[0]
 
-				attachments = await get(`/cards/${starterReportCardId}/attachments`)
-				newAttachment = await uploadAttachment(starterReportImageLocation, starterReportCardId)
+				attachments = await trello.getAttachments(starterReportCardId)
+				newAttachment = await trello.uploadAttachment(starterReportImageLocation, starterReportCardId)
 				
 				log ("deleting " + attachments.data.length + " attachments")
 				await Promise.all(
 					attachments.data.map(a => {
-						return del(`/cards/${starterReportCardId}/attachments/${a.id}`)
+						return trello.deleteAttachment(starterReportCardId, a.id)
 					})
 				)
 
-				put(`cards/${starterReportCardId}`,{},{
+				await trello.updateCard(starterReportCardId,{
 					desc: formatDescription(starterReport),
 					idAttachmentCover: newAttachment.id
 				})
-
 
 				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
@@ -242,44 +217,6 @@ async function main(){
 	})
 
 }
-
-let uploadAttachment = async (imageLocation, cardId) => {
-	return new Promise((resolve, reject) => {
-		try {
-
-			const formData = new FormData()
-
-			formData.append("key", queryParams.key);
-			formData.append("token", queryParams.token);
-			formData.append("file", fs.createReadStream(imageLocation));
-
-			var requestObj = request.post(url + '/cards/' + cardId + '/attachments', attachmentCallback);
-			requestObj._form = formData;
-
-			function attachmentCallback(err, httpResponse, body) {
-				if (httpResponse.statusCode == 200) {
-					resolve(JSON.parse(body));
-				} else {
-					reject('Could not attach the file to card:', httpResponse.statusMessage);
-				}
-			}
-
-		}
-		catch(e){
-			reject("error uploading doc:" + e)
-		}
-	})
-}
-// 
-// let deleteCardAttachments = async (cardId) => {
-// 	let attachments = get(`/cards/${cardId}/attachments`)
-// 	return Promise.all(
-// 		attachments.map(a => {
-// 			return del(`/cards/${cardId}/attachments/${a}`)
-// 		})
-// 	)
-// 
-// }
 
 let starterTextFn = (starters) => {
 	return (rect, text )=>{
@@ -373,214 +310,6 @@ let getStarterReport = async(listsAndCards)=>{
 
 	return starters
 
-}
-
-
-let getAllBoardData = async (boardId) => {
-	let params = {
-		cards: "open",
-		customFieldItems : true 
-	}
-	let r =  await get(`boards/${boardId}/cards`, params)
-	return r.data
-}
-
-let getAllMoveActions = async (boardId, 		) => {
-	let params = {
-		filter: "updateCard",
-		since: date.subDays(Date.now(),7)
-	}
-	let response = await get(`boards/${boardId}/actions`, params)
-
-	return _.filter( response.data, (action) =>{
-		if (typeof action.data.old["idList"] !== "undefined"){
-			return action
-		}
-	})
-
-}
-
-let getManualMoveActions = async (cardData) => {
-
-	// Get Engineer project move history 
-	let moveActions = await getAllMoveActions(boardId)
-
-	let moveReports = await Promise.all(cardData.map(async (card)=>{
-		let moveList = await getMoveListForCard(card.id, moveActions)
-		return {
-			// moveList : moveList,
-			move: moveList[0],
-			id: card.id,
-			name: card.name
-		}
-	}))
-
-	return _.filter(moveReports, (moveReport)=>{
-		return (moveReport.move) 
-	})
-
-}
-
-let getMoveListForCard = (cardId, moveActions) => {
-
-	let cards = _.filter(moveActions,(action)=>{
-		return (action.data.card.id == cardId)
-	})
-
-	let moves = _.map(cards,(card)=>{
-		return {
-			from: projectNameForName(card.data.listBefore.name).name,
-			to: projectNameForName(card.data.listAfter.name).name,
-			date: new Date(card.date).toISOString()
-		}
-	})
-
-	return moves
-
-}
-
-let get = async (path, extraParams) => {
-
-	try {
-		return await axios.get(
-			`${url}/${path}`,
-			{
-				params: {
-					...queryParams, 
-					...extraParams
-				}
-			}
-		)
-	}
-	catch (e){
-		log("error making request: " +e)
-	}
-}
-
-let put = async (path, data, extraParams) => {
-
-	try {
-		return await axios.put(
-			`${url}/${path}`,
-			data,
-			{
-				params: {
-					...queryParams, 
-					...extraParams
-				}
-			}
-		)
-	}
-	catch (e){
-		log("error making put request: " +e)
-	}
-}
-
-let post = async (path, data, extraParams) => {
-
-	try {
-		return await axios.post(
-			`${url}/${path}`,
-			data,
-			{
-				params: {
-					...queryParams, 
-					...extraParams
-				}
-			}
-		)
-	}
-	catch (e){
-		log("error making post request: " +e)
-	}
-}
-
-let del = async (path,extraParams) => {
-
-	try {
-		return await axios.delete(
-			`${url}/${path}`,
-			{
-				params: {
-					...queryParams, 
-					...extraParams
-				}
-			}
-		)
-	}
-	catch (e){
-		log("error making del request: " +e)
-	}
-}
-
-let getCustomFieldDefinitionFromName = async (customFieldName) => {
-	let response = await get(`boards/${boardId}/customFields`)
-		
-	let projectStartDateField = response.data.filter(field => {return (field.name == customFieldName)})
-	
-	return projectStartDateField[0]
-
-}
-
-
-
-let getLists = async () => {
-	let response = await get(`boards/${boardId}/lists`)
-	return _.map(response.data, _.partialRight(_.pick,["id","name"]))
-}
-
-
-
-let addCards = async (lists, allCards, customFieldNames)=> {
-
-	let c = await get(`boards/${boardId}/customFields`)
-	let customFieldData = c.data;
-
-	return Promise.all(
-		lists.map(async (list)=>{
-			let listCards = await get(`lists/${list.id}/cards`)
-
-			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'labels']));
-
-			list.cards = listCards2.map((card) => {
-
-				let lookedUpCard = _.find(allCards, c => {return c.id == card.id})
-				let filteredCard = _.pick(lookedUpCard, ['customFieldItems']);
-
-				if (card.labels.length == 0) {
-					delete card.labels
-				}
-
-				//For each user supplied custom field name, filter for that field only 
-				let customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
-
-					let targetField = _.find(customFieldData, f => { return f.name == targetFieldName } )
-					
-					let customField = _.find(filteredCard.customFieldItems, f => {return f.idCustomField == targetField.id})
-					if (customField) {
-						customField.name = targetFieldName
-						acc.push(customField)
-					}
-					return acc
-					
-				},[])
-
-				if (customFieldItems.length > 0) {
-					filteredCard.customFieldItems = customFieldItems
-				} else {
-					delete filteredCard.customFieldItems
-				}
-				
-
-				let result =  {
-					...card,
-					...filteredCard
-				}
-				return result;
-			})
-			return list
-		})
-	)
 }
 
 let makeBillingReport = async (lists) => {
