@@ -102,7 +102,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Billing Report
 			//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let billingReportCardId = 'D5KmQ4Da'
+			let billingReportCardId = 'XbIkyoda'
 			
 			let outputReport = await makeBillingReport(listsAndCards)
 			title("Billing Report")
@@ -115,21 +115,30 @@ async function main(){
 			} else {
 				console.log("Billing report: re-update the board")
 
-
-
 				let imageLocation = createImageFile(
 					billingTextFn(
 						outputReport.totals.billing,
 						outputReport.totals.nonBilling,
 						outputReport.totals.pendingStartDate
 					),
-					"billing-" + dateString 
+					"billing-" + dateString,
+					1200,
+					1000
 				)[0]
 
-				let attachment = await uploadAttachment(imageLocation, billingReportCardId)
+				let attachments = await get(`/cards/${billingReportCardId}/attachments`)
+				let newAttachment = await uploadAttachment(imageLocation, billingReportCardId)
+				
+				log ("deleting " + attachments.data.length + " old attachments")
+				await Promise.all(
+					attachments.data.map(a => {
+						return del(`/cards/${billingReportCardId}/attachments/${a.id}`)
+					})
+				)
+
 				put(`cards/${billingReportCardId}`,{},{
 					desc: formatDescription(outputReport),
-					idAttachmentCover: attachment.id
+					idAttachmentCover: newAttachment.id
 				})
 
 				await fsWriteFile("/tmp/billingReport.txt", reportHash, "utf8")
@@ -138,7 +147,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Move report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let moveReportCardId = 'B2RtCsvU'
+			let moveReportCardId = 'o5RSYrsE'
 
 			let manualMoveReports = await getManualMoveActions(cardData)
 			title("Manual Moves this week")
@@ -158,11 +167,21 @@ async function main(){
 					20 + (200 * manualMoveReports.length)
 				)[0]
 
-				attachment = await uploadAttachment(moveReportImageLocation, moveReportCardId)
+
+				attachments = await get(`/cards/${moveReportCardId}/attachments`)
+				newAttachment = await uploadAttachment(moveReportImageLocation, moveReportCardId)
+				
+				log ("deleting " + attachments.data.length + " old attachments")
+				await Promise.all(
+					attachments.data.map(a => {
+						return del(`/cards/${moveReportCardId}/attachments/${a.id}`)
+					})
+				)
+
 				
 				put(`cards/${moveReportCardId}`,{},{
 					desc: formatDescription(manualMoveReports),
-					idAttachmentCover: attachment.id
+					idAttachmentCover: newAttachment.id
 				})
 				
 				await fsWriteFile("/tmp/moveReport.txt", reportHash, "utf8")
@@ -171,7 +190,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Starter report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let starterReportCardId = 'hi2gyC87'
+			let starterReportCardId = 'WRU9n5sv'
 
 			let starterReport = await getStarterReport(listsAndCards)
 			title ("Starters next week")
@@ -191,16 +210,29 @@ async function main(){
 					20 + (200 * starterReport.length)
 				)[0]
 
-				attachment = await uploadAttachment(starterReportImageLocation, starterReportCardId)
+				attachments = await get(`/cards/${starterReportCardId}/attachments`)
+				newAttachment = await uploadAttachment(starterReportImageLocation, starterReportCardId)
+				
+				log ("deleting " + attachments.data.length + " attachments")
+				await Promise.all(
+					attachments.data.map(a => {
+						return del(`/cards/${starterReportCardId}/attachments/${a.id}`)
+					})
+				)
+
 				put(`cards/${starterReportCardId}`,{},{
 					desc: formatDescription(starterReport),
-					idAttachmentCover: attachment.id
+					idAttachmentCover: newAttachment.id
 				})
 
 
 				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
 			}
+
+			//snap vacancy cards back.
+
+
 
 			resolve("done")
 
@@ -238,6 +270,16 @@ let uploadAttachment = async (imageLocation, cardId) => {
 		}
 	})
 }
+// 
+// let deleteCardAttachments = async (cardId) => {
+// 	let attachments = get(`/cards/${cardId}/attachments`)
+// 	return Promise.all(
+// 		attachments.map(a => {
+// 			return del(`/cards/${cardId}/attachments/${a}`)
+// 		})
+// 	)
+// 
+// }
 
 let starterTextFn = (starters) => {
 	return (rect, text )=>{
@@ -261,12 +303,14 @@ let movesTextFn = (moves) => {
 	}
 }
 
-let billingTextFn = (billing = 0, nonBilling = 0, pending = 0) => {
+let billingTextFn = (billing = 0, nonBilling = 0, pending = 0, lab = 0) => {
 	return (rect, text )=>{
 
-		text("Billing: " + billing, 				0,	 10, "#2A2", '60pt Menlo')
+		text("Billing: " + billing, 				5,	 10, "#2A2", '60pt Menlo')
 		text("Not Billing: " + nonBilling,			200, 10, "#F00", '60pt Menlo')
-		text("(Pending Start: " + pending + ")" ,	400, 10, "#22A", '60pt Menlo')
+		text("(Pending Start: " + pending + ")" ,	280, 20, "#22A", '40pt Menlo')
+		text("Lab: " + lab + "" 				,	520, 10, "#F96", '60pt Menlo')
+
 	}
 }
 
@@ -337,10 +381,11 @@ let getAllBoardData = async (boardId) => {
 		cards: "open",
 		customFieldItems : true 
 	}
-	return (await get(`boards/${boardId}/cards`, params)).data
+	let r =  await get(`boards/${boardId}/cards`, params)
+	return r.data
 }
 
-let getAllMoveActions = async (boardId, cardData) => {
+let getAllMoveActions = async (boardId, 		) => {
 	let params = {
 		filter: "updateCard",
 		since: date.subDays(Date.now(),7)
@@ -447,6 +492,24 @@ let post = async (path, data, extraParams) => {
 	}
 	catch (e){
 		log("error making post request: " +e)
+	}
+}
+
+let del = async (path,extraParams) => {
+
+	try {
+		return await axios.delete(
+			`${url}/${path}`,
+			{
+				params: {
+					...queryParams, 
+					...extraParams
+				}
+			}
+		)
+	}
+	catch (e){
+		log("error making del request: " +e)
 	}
 }
 
