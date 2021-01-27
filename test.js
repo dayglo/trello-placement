@@ -20,7 +20,7 @@ let title = (x) => {console.log(chalk.red(x + "\n-------------------------------
 let boardId = "n6VBFMpa"
 
 let projectNameForName = (cardName) => {
-		let matches = cardName.match(/^((p|P)roject|PROJECT) - (.+)/) 
+		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s(.+)/) 
 
 		if (matches) {
 			return {
@@ -65,13 +65,25 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let cardData = await trello.getAllBoardData(boardId)
 			let lists = await trello.getLists()
-			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills"])
+			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills", "Employee ID", "Email"])
 
 			let listsAndCards2 = listsAndCards.map(l => {
+
 				let result = projectNameForName(l.name)
-				l.projectName = result.name
-				l.project = result.replaced
+
+				if (l.name == "Reports"){
+					//List is a system list
+					l.system = true
+				} else if (result.replaced) {
+					// List is a Billable project
+					l.projectName = result.name
+					l.project = true
+				} else {
+					l.internal = true
+				}
+
 				return l
+
 			})
 
 			title("cleaned data")
@@ -96,9 +108,10 @@ async function main(){
 				let imageLocation = createImageFile(
 					billingTextFn(
 						outputReport.totals.billing,
-						outputReport.totals.nonBilling,
+						outputReport.totals.placed,
 						outputReport.totals.pendingStartDate,
-						outputReport.totals.lab,
+						outputReport.totals.internal,
+						outputReport.totals.onsiteNonBilling,
 					),
 					"billing-" + dateString,
 					1200,
@@ -143,7 +156,7 @@ async function main(){
 					movesTextFn(manualMoveReports),
 					"moves-" + dateString,
 					2000,
-					20 + (200 * manualMoveReports.length)
+					20 + (300 * manualMoveReports.length)
 				)[0]
 
 				attachments = await trello.getAttachments(moveReportCardId)
@@ -222,7 +235,7 @@ let starterTextFn = (starters) => {
 		let i = 20
 		starters.forEach(move => {
 			text(`${move.name}:`,	i,	 10, "#22A", '60pt Menlo')
-			text(` --> ${move.to}`,	i,	 600, "#491", '60pt Menlo')
+			text(`${move.to}`,	i,	 	900, "#491", '60pt Menlo')
 			i += 200
 		})
 	}
@@ -232,20 +245,24 @@ let movesTextFn = (moves) => {
 	return (rect, text )=>{
 		let i = 20
 		moves.forEach(move => {
-			text(`${move.name}:`,							i,	 10, "#22A", '60pt Menlo')
-			text(`${move.move.from} --> ${move.move.to}`,	i,	 600, "#A2A", '60pt Menlo')
-			i += 200
+			text(`${move.name}:`,							i,			10, "#22A", '60pt Menlo')
+			text(`${move.move.from} --> ${move.move.to}`,	i + 100,	200, "#A2A", '60pt Menlo')
+			i += 300
 		})
 	}
 }
 
-let billingTextFn = (billing = 0, nonBilling = 0, pending = 0, lab = 0) => {
+let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, onsiteNonBilling = 0) => {
 	return (rect, text )=>{
 
-		text("Billing: " + billing, 				5,	 10, "#2A2", '60pt Menlo')
-		text("Not Billing: " + nonBilling,			200, 10, "#F00", '60pt Menlo')
-		text("(Pending Start: " + pending + ")" ,	280, 20, "#22A", '40pt Menlo')
-		text("Lab: " + lab + "" 				,	520, 10, "#F96", '60pt Menlo')
+		let nonBillingTotal = onsiteNonBilling + internal + pendingStart
+
+		text(`Billing: ${billing} (${placed} placed)` , 		5,	 10, "#2A2", '60pt Menlo')
+
+		text("Not Billing: " 		+ nonBillingTotal,			200, 10, "#F00", '60pt Menlo')
+		text("Onsite: " 			+ onsiteNonBilling ,		310, 30, "#22A", '40pt Menlo')
+		text("Pending Start: " 		+ pendingStart ,			390, 30, "#22A", '40pt Menlo')
+		text("Internal Projects: " 	+ internal,					470, 30, "#F96", '40pt Menlo')
 
 	}
 }
@@ -316,20 +333,30 @@ let makeBillingReport = async (lists) => {
 	let now = Date.now()
 
 	let report = {
-		perProject:[
-
-		],
+		perProject:[],
 		totals:{
 			placed:0,
 			billing: 0,
 			nonBilling: 0,
 			pendingStartDate: 0,
-			lab: 0
+			internal: 0,
+			onsiteNonBilling: 0,
+			vacancies: 0
 		}
 	}
 
 	lists.forEach((list)=>{
-		if (list["project"]) {
+
+
+		if (list["system"]) {
+			// do nothing
+		} else if (list["internal"]) {
+
+			list.cards.forEach((card)=>{
+				report.totals.internal++
+			})
+
+		} else if (list["project"]) {
 
 			let projectTotals = {
 				project: list.projectName,
@@ -337,27 +364,27 @@ let makeBillingReport = async (lists) => {
 					placed: 0,
 					billing: 0,
 					nonBilling: 0,
-					pendingStartDate: 0
-
+					pendingStartDate: 0,
+					onsiteNonBilling: 0,
+					vacancies: 0
 				}
 			}
 
 			list.cards.forEach((card=>{
 
-
+				let placed = true;
 				let billing = true;
 				let vacancy = false;
-				let placed = false;
+				let pendingStartDate = false;
 
 				if (card["labels"]) {
 					card.labels.forEach((label)=>{
 						if (label.name == "non billing") {
-							billing = false	
-							placed = true;
+							billing = false;
 						} 
 
 						if (label.name == "Vacancy") {
-							vacancy = true	
+							vacancy = true
 						}
 
 					})
@@ -369,7 +396,7 @@ let makeBillingReport = async (lists) => {
 							let projectStartDate = Date.parse(field.value.date)
 							if (date.compareAsc(Date.now(), projectStartDate) == -1) {
 								billing = false
-								projectTotals.consultants.pendingStartDate++
+								pendingStartDate = true
 							} 
 						} 
 
@@ -378,21 +405,16 @@ let makeBillingReport = async (lists) => {
 
 				if (!vacancy) {
 
-					if (list.name = "Innovation Lab" )  {
-						report.totals.lab++
-					}
+					if (placed) 						projectTotals.consultants.placed++
+					if (placed && !billing) 			projectTotals.consultants.onsiteNonBilling++
+					if (placed && pendingStartDate) 	projectTotals.consultants.pendingStartDate++
+	
+					if (billing) 						projectTotals.consultants.billing++
+					if (!billing)						projectTotals.consultants.nonBilling++
 
-					if (placed) projectTotals.consultants.placed++
-
-					if (billing) {
-						projectTotals.consultants.billing++
-					} else {
-						projectTotals.consultants.nonBilling++
-					}
+				} else {
+					projectTotals.consultants.vacancies++
 				}
-
-				
-
 			}))
 
 			
@@ -401,16 +423,18 @@ let makeBillingReport = async (lists) => {
 
 	})
 
-	report.totals = report.perProject.reduce(
+	let totals = report.perProject.reduce(
 		(acc, project) => {
 			acc.billing += project.consultants.billing	
 			acc.nonBilling += project.consultants.nonBilling
 			acc.placed += project.consultants.placed
-			acc.pendingStartDate += project.consultants.pendingStartDate				
+			acc.pendingStartDate += project.consultants.pendingStartDate
+			acc.onsiteNonBilling += project.consultants.onsiteNonBilling					
 			return acc
 		},
 		report.totals
 	)
+	report.totals = totals
 
 	return report
 }
