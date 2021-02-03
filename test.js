@@ -17,10 +17,34 @@ let log = console.log;
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
 let title = (x) => {console.log(chalk.red(x + "\n---------------------------------------------------------------------"))}
 
-let boardId = "n6VBFMpa"
+if (!("TRELLO_BOARD_ID" in process.env)) {
+    console.log('No TRELLO_BOARD_ID has been set.');
+    process.exit(1)
+}
+
+if (!("BILLING_REPORT_CARD" in process.env)) {
+    console.log('No BILLING_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("MOVE_REPORT_CARD" in process.env)) {
+    console.log('No MOVE_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("STARTERS_REPORT_CARD" in process.env)) {
+    console.log('No STARTERS_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+
+
+let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
+
+
 
 let projectNameForName = (cardName) => {
-		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s(.+)/) 
+		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s([\w\s]+)( |,.+?)\(/) 
 
 		if (matches) {
 			return {
@@ -65,13 +89,13 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let cardData = await trello.getAllBoardData(boardId)
 			let lists = await trello.getLists()
-			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills", "Employee ID", "Email"])
+			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills", "Placement", "Role"])
 
 			let listsAndCards2 = listsAndCards.map(l => {
 
 				let result = projectNameForName(l.name)
 
-				if (l.name == "Reports"){
+				if (_.includes(["Reports", "Done", "Actions", "Recruitment"],l.name) ){
 					//List is a system list
 					l.system = true
 				} else if (result.replaced) {
@@ -92,7 +116,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Billing Report
 			//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let billingReportCardId = 'XbIkyoda'
+			let billingReportCardId = process.env.BILLING_REPORT_CARD || 'XbIkyoda'
 			
 			let outputReport = await makeBillingReport(listsAndCards)
 			title("Billing Report")
@@ -139,7 +163,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Move report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let moveReportCardId = 'o5RSYrsE'
+			let moveReportCardId = process.env.MOVE_REPORT_CARD || 'o5RSYrsE'
 
 			let manualMoveReports = await trello.getManualMoveActions(boardId, cardData, projectNameForName)
 			title("Manual Moves this week")
@@ -180,7 +204,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Starter report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let starterReportCardId = 'WRU9n5sv'
+			let starterReportCardId = process.env.STARTERS_REPORT_CARD || 'WRU9n5sv'
 
 			let starterReport = await getStarterReport(listsAndCards)
 			title ("Starters next week")
@@ -371,50 +395,87 @@ let makeBillingReport = async (lists) => {
 			}
 
 			list.cards.forEach((card=>{
+// 
+// 				if (card.name == "DM - Michal (part time)") {
+// 					debugger;
+// 				} 
 
-				let placed = true;
-				let billing = true;
-				let vacancy = false;
+
+				let billing = false;
+
+				let nonBillingLabel = false;
+				let vacancyLabel = false;
+				let leaveCoverLabel = false;
+				let backfillOptionLabel = false; 
+
 				let pendingStartDate = false;
+				let hasRoleField = false
+
 
 				if (card["labels"]) {
 					card.labels.forEach((label)=>{
+						if (label.name == "Leave Cover") {
+							leaveCoverLabel = true
+						} 
 						if (label.name == "non billing") {
-							billing = false;
+							nonBillingLabel = true;
 						} 
 
 						if (label.name == "Vacancy") {
-							vacancy = true
+							vacancyLabel = true
 						}
 
-					})
-				}
-				 
-				if ((card["customFieldItems"] && !vacancy)) {
-					card.customFieldItems.forEach((field)=>{
-						if (field.name == "Project Start Date") {
-							let projectStartDate = Date.parse(field.value.date)
-							if (date.compareAsc(Date.now(), projectStartDate) == -1) {
-								billing = false
-								pendingStartDate = true
-							} 
-						} 
-
+						if (label.name == "Backfill Option") {
+							backfillOptionLabel = true
+						}
 					})
 				}
 
-				if (!vacancy) {
+				if (  _.find(card.customFieldItems, ["name", "Role"])  ){
+					hasRoleField = true
 
-					if (placed) 						projectTotals.consultants.placed++
-					if (placed && !billing) 			projectTotals.consultants.onsiteNonBilling++
-					if (placed && pendingStartDate) 	projectTotals.consultants.pendingStartDate++
-	
-					if (billing) 						projectTotals.consultants.billing++
-					if (!billing)						projectTotals.consultants.nonBilling++
+				}
 
-				} else {
+				if (vacancyLabel) {
 					projectTotals.consultants.vacancies++
+				} else if (backfillOptionLabel){
+					//dont count
 				}
+				else {
+
+					// A card represents a placed person.
+					if (hasRoleField || leaveCoverLabel) {
+
+						projectTotals.consultants.placed++
+
+						billing = true
+						if (nonBillingLabel) {
+							billing = false
+							projectTotals.consultants.onsiteNonBilling++
+						}
+
+						if (card["customFieldItems"]) {
+							card.customFieldItems.forEach((field)=>{
+								if (field.name == "Project Start Date") {
+									let projectStartDate = Date.parse(field.value.date)
+									if (date.compareAsc(Date.now(), projectStartDate) == -1) {
+										billing = false
+										pendingStartDate = true
+										projectTotals.consultants.pendingStartDate++
+									} 
+								} 
+
+							})
+						}			
+		
+						if (billing) 						projectTotals.consultants.billing++
+						if (!billing)						projectTotals.consultants.nonBilling++
+
+					}
+
+				}
+
+		
 			}))
 
 			

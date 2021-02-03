@@ -33,7 +33,7 @@ let queryString = `key=${process.env.TRELLO_KEY}&token=${process.env.TRELLO_TOKE
 
 let url = "https://api.trello.com/1"
 
-let boardId = "n6VBFMpa"
+let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
 
 
 let makeRequest = async (method,path,data,extraParams) => {
@@ -238,7 +238,7 @@ trelloFunctions.addCards = async (lists, allCards, customFieldNames)=> {
 		lists.map(async (list)=>{
 			let listCards = await get(`lists/${list.id}/cards`)
 
-			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'labels']));
+			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'shortUrl','labels']));
 
 			list.cards = listCards2.map((card) => {
 
@@ -251,10 +251,18 @@ trelloFunctions.addCards = async (lists, allCards, customFieldNames)=> {
 
 				//For each user supplied custom field name, filter for that field only 
 				let customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
-
 					let targetField = _.find(customFieldData, f => { return f.name == targetFieldName } )
 					
-					let customField = _.find(filteredCard.customFieldItems, f => {return f.idCustomField == targetField.id})
+					let customField = _.find(filteredCard.customFieldItems, f => {
+						
+						if (typeof targetField["id"] == "undefined") {
+							console.error("A custom field you specified isn't on this board")
+							process.exit()
+						} else {
+							return f.idCustomField == targetField.id
+						}
+						
+					})
 					if (customField) {
 						customField.name = targetFieldName
 						acc.push(customField)
