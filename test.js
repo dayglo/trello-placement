@@ -44,12 +44,12 @@ let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
 
 
 let projectNameForName = (cardName) => {
-		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s([\w\s]+)( |,.+?)\(/) 
+		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s([\w\s]+)()/) 
 
 		if (matches) {
 			return {
 				replaced: true,
-				name: matches[3]
+				name: matches[3].trim()
 			}
 		} else {
 			return {
@@ -115,7 +115,7 @@ async function main(){
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Billing Report
-			//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let billingReportCardId = process.env.BILLING_REPORT_CARD || 'XbIkyoda'
 			
 			let outputReport = await makeBillingReport(listsAndCards)
@@ -139,7 +139,7 @@ async function main(){
 					),
 					"billing-" + dateString,
 					1200,
-					700
+					600
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -165,7 +165,8 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let moveReportCardId = process.env.MOVE_REPORT_CARD || 'o5RSYrsE'
 
-			let manualMoveReports = await trello.getManualMoveActions(boardId, cardData, projectNameForName)
+			let manualMoveReports = await trello.getFinalMovesForPeriod(boardId, cardData, projectNameForName,7)
+
 			title("Manual Moves this week")
 			echo(manualMoveReports)
 
@@ -221,14 +222,18 @@ async function main(){
 					starterTextFn(starterReport),
 					"starters-" + dateString,
 					2000,
-					20 + (200 * starterReport.length)
+					20 + (300 * starterReport.length)
 				)[0]
 
 				attachments = await trello.getAttachments(starterReportCardId)
+				if (attachments.length > 0) {
+					debugger
+				}
+
 				newAttachment = await trello.uploadAttachment(starterReportImageLocation, starterReportCardId)
 				
 				log ("deleting " + attachments.data.length + " attachments")
-				await Promise.all(
+				let results = await Promise.all(
 					attachments.data.map(a => {
 						return trello.deleteAttachment(starterReportCardId, a.id)
 					})
@@ -242,6 +247,54 @@ async function main(){
 				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
 			}
+
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// Vacancy report
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+	
+			let vacancyReportCardId = process.env.VACANCY_REPORT_CARD || 'yJvcPxXL'
+
+			let vacancyReport = await getVacancyReport(listsAndCards2)
+			title ("vacancies coming up")
+			echo(vacancyReport)
+
+			reportHash = crypto.createHash('md5').update(JSON.stringify(vacancyReport)).digest('hex')
+
+			if (reportHash == await readHash("/tmp/vacancyReport.txt")) {
+				console.log("vacancy Report: the hash is the same so don't re-update the board")
+			} else {
+				console.log("vacancy report: re-update the board")
+
+				let vacancyReportImageLocation = createImageFile(
+					vacancyTextFn(vacancyReport),
+					"vacancys-" + dateString,
+					2400,
+					20 + (250 * vacancyReport.length)
+				)[0]
+
+				attachments = await trello.getAttachments(vacancyReportCardId)
+				if (attachments.length > 0) {
+					debugger
+				}
+
+				newAttachment = await trello.uploadAttachment(vacancyReportImageLocation, vacancyReportCardId)
+				
+				log ("deleting " + attachments.data.length + " attachments")
+				let results = await Promise.all(
+					attachments.data.map(a => {
+						return trello.deleteAttachment(vacancyReportCardId, a.id)
+					})
+				)
+
+				await trello.updateCard(vacancyReportCardId,{
+					desc: formatDescription(vacancyReport),
+					idAttachmentCover: newAttachment.id
+				})
+
+				await fsWriteFile("/tmp/vacancyReport.txt", reportHash, "utf8")
+
+			}
+
 
 
 
@@ -258,10 +311,36 @@ let starterTextFn = (starters) => {
 	return (rect, text )=>{
 		let i = 20
 		starters.forEach(move => {
-			text(`${move.name}:`,	i,	 10, "#22A", '60pt Menlo')
-			text(`${move.to}`,	i,	 	900, "#491", '60pt Menlo')
-			i += 200
+			text(`${move.name}:`,	i,	 	10, "#22A", '60pt Menlo')
+			text(`${move.to}`,		i,	 	1100, "#131", '60pt Menlo')
+			let friendlyDate = date.formatDistanceToNow(date.parseISO(move.date), { addSuffix: true })
+
+			text(`${friendlyDate}`,	i+100,	100, "#191", '60pt Menlo')
+			i += 300
 		})
+	}
+}
+
+let vacancyTextFn = (vacancies) => {
+	return (rect, text )=>{
+		let i = 20
+
+		vacancies.forEach(vacancy => {
+			text(`${vacancy.client }:`,	i,	 	10, "#22A", '60pt Menlo')
+			text(`${vacancy.name}`,		i,	 	900, "#131", '60pt Menlo')
+
+			if (vacancy.startDate == null) {
+				i += 150
+
+			} else {
+
+				let friendlyDate = date.formatDistanceToNow(new Date(vacancy.startDate) , { addSuffix: true })
+				text(`${friendlyDate}`,	i+100,	1100, "#191", '60pt Menlo')
+				i += 250
+			}
+		})
+
+		return i
 	}
 }
 
@@ -325,25 +404,89 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 
 }
 
+let getVacancyReport = async(listsAndCards)=>{
+	let vacancies = []
+
+
+	listsAndCards.forEach((list)=>{
+		list.cards.forEach((card)=>{
+
+			let include = false
+
+			if (card["labels"]) {
+				card.labels.forEach((label)=>{
+					if (label.name == "Vacancy") {
+						include = true
+					} 
+				})
+			}
+
+			if (include){
+
+				let vacancy = {
+					name: card.name,
+					client: projectNameForName(list.name).name,
+					startDate: null
+				}
+
+
+				if (card["customFieldItems"]) {
+					card.customFieldItems.forEach((field)=>{
+						if (field.name == "Project Start Date") {
+							vacancy.startDate = Date.parse(field.value.date)
+						} 
+					})
+				}
+
+				vacancies.push(vacancy)
+			}
+		})
+	})
+	
+	return _.sortBy(vacancies, ['projectStartDate'])
+
+}
+
 
 let getStarterReport = async(listsAndCards)=>{
 	let starters = []
 
 	listsAndCards.forEach((list)=>{
 		list.cards.forEach((card)=>{
-			if (card["customFieldItems"]) {
-				card.customFieldItems.forEach((field)=>{
-					if (field.name == "Project Start Date") {
-						let projectStartDate = Date.parse(field.value.date)
-						if (date.compareAsc(Date.now(), projectStartDate) == -1) {
-							starters.push({
-								name: card.name,
-								to: projectNameForName(list.name).name,
-								date: field.value.date
-							})
-						} 
+
+			let include = false
+
+			if (  _.find(card.customFieldItems, ["name", "Role"])   ){
+				include = true
+			}
+
+			if (card["labels"]) {
+				card.labels.forEach((label)=>{
+					if (label.name == "Leave Cover") {
+						include = true
 					} 
+
+					if (label.name == "Backfill Option") {
+						include = false
+					}
 				})
+			}
+
+			if (include){
+				if (card["customFieldItems"]) {
+					card.customFieldItems.forEach((field)=>{
+						if (field.name == "Project Start Date") {
+							let projectStartDate = Date.parse(field.value.date)
+							if (date.compareAsc(Date.now(), projectStartDate) == -1) {
+								starters.push({
+									name: card.name,
+									to: projectNameForName(list.name).name,
+									date: field.value.date
+								})
+							} 
+						} 
+					})
+				}
 			}
 		})
 	})
@@ -395,11 +538,6 @@ let makeBillingReport = async (lists) => {
 			}
 
 			list.cards.forEach((card=>{
-// 
-// 				if (card.name == "DM - Michal (part time)") {
-// 					debugger;
-// 				} 
-
 
 				let billing = false;
 

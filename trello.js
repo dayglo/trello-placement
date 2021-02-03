@@ -112,7 +112,7 @@ let post = async (path, data, extraParams) => {
 }
 
 let del = async (path,extraParams) => {
-	return makeRequest("del",path,{},extraParams)
+	return makeRequest("delete",path,{},extraParams)
 }
 
 
@@ -208,7 +208,7 @@ trelloFunctions.getCustomFieldDefinitionFromName = async (customFieldName) => {
 }
 
 trelloFunctions.deleteAttachment = async (cardId, attachmentId) => {
-	return await delete(`/cards/${cardId}/attachments/${attachmentId}`)
+	return await del(`/cards/${cardId}/attachments/${attachmentId}`)
 } 
 
 trelloFunctions.getAttachments = async (cardId) => {
@@ -290,9 +290,14 @@ trelloFunctions.addCards = async (lists, allCards, customFieldNames)=> {
 }
 
 
+trelloFunctions.getFinalMovesForPeriod = async(boardId, cardData, projectNameForName,period) => {
+	return await trelloFunctions.getManualMoveActions(boardId, cardData, projectNameForName)
+}
 
 
-trelloFunctions.getManualMoveActions = async (boardId, cardData, nameFilterFn) => {
+
+
+trelloFunctions.getManualMoveActions = async (boardId, cardData, nameFilterFn, period = 7) => {
 
 	let getMoveListForCard = (cardId, moveActions) => {
 
@@ -307,6 +312,7 @@ trelloFunctions.getManualMoveActions = async (boardId, cardData, nameFilterFn) =
 				date: new Date(card.date).toISOString()
 			}
 		})
+
 		return moves
 	}
 
@@ -331,12 +337,32 @@ trelloFunctions.getManualMoveActions = async (boardId, cardData, nameFilterFn) =
 
 	let moveReports = await Promise.all(cardData.map(async (card)=>{
 		let moveList = getMoveListForCard(card.id, moveActions)
-		return {
-			// moveList : moveList,
-			move: moveList[0],
-			id: card.id,
-			name: card.name
+
+		if (moveList.length == 0) {
+			return false
+		} else {
+
+			let finalMove = {
+				date: moveList[0].date,
+				from: moveList.slice(-1)[0].from,
+				to:   moveList[0].to
+			}
+
+			if (finalMove.from === finalMove.to) {
+				return false
+			} else {
+				return {
+					// moveList : moveList,
+					move: finalMove,
+					id: card.id,
+					name: card.name
+				}
+			}
 		}
+
+
+
+
 	}))
 
 	return _.filter(moveReports, (moveReport)=>{
