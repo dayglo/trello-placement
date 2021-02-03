@@ -255,21 +255,21 @@ async function main(){
 			let vacancyReportCardId = process.env.VACANCY_REPORT_CARD || 'yJvcPxXL'
 
 			let vacancyReport = await getVacancyReport(listsAndCards2)
-			title ("vacancies coming up")
+			title ("Vacancies coming up")
 			echo(vacancyReport)
 
 			reportHash = crypto.createHash('md5').update(JSON.stringify(vacancyReport)).digest('hex')
 
 			if (reportHash == await readHash("/tmp/vacancyReport.txt")) {
-				console.log("vacancy Report: the hash is the same so don't re-update the board")
+				console.log("Vacancy Report: the hash is the same so don't re-update the board")
 			} else {
-				console.log("vacancy report: re-update the board")
+				console.log("Vacancy report: re-update the board")
 
 				let vacancyReportImageLocation = createImageFile(
 					vacancyTextFn(vacancyReport),
-					"vacancys-" + dateString,
+					"vacancies-" + dateString,
 					2400,
-					20 + (250 * vacancyReport.length)
+					40 + (250 * vacancyReport.length)
 				)[0]
 
 				attachments = await trello.getAttachments(vacancyReportCardId)
@@ -330,14 +330,15 @@ let vacancyTextFn = (vacancies) => {
 			text(`${vacancy.name}`,		i,	 	900, "#131", '60pt Menlo')
 
 			if (vacancy.startDate == null) {
-				i += 150
+				text(`No start date`,	i+100,	1100, "#E00", '60pt Menlo')
 
 			} else {
 
 				let friendlyDate = date.formatDistanceToNow(new Date(vacancy.startDate) , { addSuffix: true })
 				text(`${friendlyDate}`,	i+100,	1100, "#191", '60pt Menlo')
-				i += 250
+				
 			}
+			i += 250
 		})
 
 		return i
@@ -362,7 +363,7 @@ let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, on
 
 		text(`Billing: ${billing} (${placed} placed)` , 		5,	 10, "#2A2", '60pt Menlo')
 
-		text("Not Billing: " 		+ nonBillingTotal,			200, 10, "#F00", '60pt Menlo')
+		text("Not Billing: " 		+ nonBillingTotal,			200, 10, "#E00", '60pt Menlo')
 		text("Onsite: " 			+ onsiteNonBilling ,		310, 30, "#22A", '40pt Menlo')
 		text("Pending Start: " 		+ pendingStart ,			390, 30, "#22A", '40pt Menlo')
 		text("Internal Projects: " 	+ internal,					470, 30, "#F96", '40pt Menlo')
