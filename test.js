@@ -113,9 +113,11 @@ async function main(){
 			title("cleaned data")
 			echo(listsAndCards2)
 
+
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Billing Report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			
 			let billingReportCardId = process.env.BILLING_REPORT_CARD || 'XbIkyoda'
 			
 			let outputReport = await makeBillingReport(listsAndCards)
@@ -146,18 +148,18 @@ async function main(){
 				let newAttachment = await trello.uploadAttachment(imageLocation, billingReportCardId)
 				
 				log ("deleting " + attachments.data.length + " old attachments")
-				await Promise.all(
+			 	Promise.all(
 					attachments.data.map(a => {
 						return trello.deleteAttachment(billingReportCardId, a.id)
 					})
 				)
 
-				await trello.updateCard(billingReportCardId,{
+				trello.updateCard(billingReportCardId,{
 					desc: formatDescription(outputReport),
 					idAttachmentCover: newAttachment.id
 				})
 
-				await fsWriteFile("/tmp/billingReport.txt", reportHash, "utf8")
+				fsWriteFile("/tmp/billingReport.txt", reportHash, "utf8")
 			}
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -188,18 +190,18 @@ async function main(){
 				newAttachment = await trello.uploadAttachment(moveReportImageLocation, moveReportCardId)
 				
 				log ("deleting " + attachments.data.length + " old attachments")
-				await Promise.all(
+				Promise.all(
 					attachments.data.map(a => {
 						return trello.deleteAttachment(moveReportCardId, a.id)
 					})
 				)
 
-				await trello.updateCard(moveReportCardId,{
+				trello.updateCard(moveReportCardId,{
 					desc: formatDescription(manualMoveReports),
 					idAttachmentCover: newAttachment.id
 				})
 				
-				await fsWriteFile("/tmp/moveReport.txt", reportHash, "utf8")
+				fsWriteFile("/tmp/moveReport.txt", reportHash, "utf8")
 			}
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -233,18 +235,18 @@ async function main(){
 				newAttachment = await trello.uploadAttachment(starterReportImageLocation, starterReportCardId)
 				
 				log ("deleting " + attachments.data.length + " attachments")
-				let results = await Promise.all(
+				Promise.all(
 					attachments.data.map(a => {
 						return trello.deleteAttachment(starterReportCardId, a.id)
 					})
 				)
 
-				await trello.updateCard(starterReportCardId,{
+				trello.updateCard(starterReportCardId,{
 					desc: formatDescription(starterReport),
 					idAttachmentCover: newAttachment.id
 				})
 
-				await fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
+				fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
 
 			}
 
@@ -280,18 +282,18 @@ async function main(){
 				newAttachment = await trello.uploadAttachment(vacancyReportImageLocation, vacancyReportCardId)
 				
 				log ("deleting " + attachments.data.length + " attachments")
-				let results = await Promise.all(
+				Promise.all(
 					attachments.data.map(a => {
 						return trello.deleteAttachment(vacancyReportCardId, a.id)
 					})
 				)
 
-				await trello.updateCard(vacancyReportCardId,{
+				trello.updateCard(vacancyReportCardId,{
 					desc: formatDescription(vacancyReport),
 					idAttachmentCover: newAttachment.id
 				})
 
-				await fsWriteFile("/tmp/vacancyReport.txt", reportHash, "utf8")
+				fsWriteFile("/tmp/vacancyReport.txt", reportHash, "utf8")
 
 			}
 
@@ -330,12 +332,57 @@ let vacancyTextFn = (vacancies) => {
 			text(`${vacancy.name}`,		i,	 	900, "#131", '60pt Menlo')
 
 			if (vacancy.startDate == null) {
-				text(`No start date`,	i+100,	1100, "#E00", '60pt Menlo')
+				text(`No start date`,	i+100,	1100, "#ae017e", '60pt Menlo')
 
 			} else {
 
-				let friendlyDate = date.formatDistanceToNow(new Date(vacancy.startDate) , { addSuffix: true })
-				text(`${friendlyDate}`,	i+100,	1100, "#191", '60pt Menlo')
+				let startDate = new Date(vacancy.startDate) 
+				let color = "#191"
+
+				switch (date.compareAsc(Date.now(), startDate)) {
+
+					case 1:
+						// Date has passed
+						color = "#bd0026"
+					break;
+
+					case 0:
+						// Today's date
+						color = "#990000"
+					break;
+
+					case -1:
+
+						let daysFromNow = date.differenceInDays(startDate,Date.now())
+
+						if (daysFromNow <= 7){
+							//imminent
+							color = "#990000"
+						}
+						else if (daysFromNow <= 14) {
+							color = "#d7301f"
+						}
+						else if (daysFromNow <= 28) {
+							color = "#ef6548"
+						}
+						else if (daysFromNow <= 28 * 2) {
+							color = "#41ae76"
+						}
+						else if (daysFromNow <= 28 * 3) {
+							color = "#238b45"
+						}
+						else if (daysFromNow <= 28 * 4) {
+							color = "#31a354"
+						}
+						else {
+							color = "#005824"
+						}
+
+					break;
+				}
+
+				let friendlyDate = date.formatDistanceToNow(startDate, { addSuffix: true })
+				text(`${friendlyDate}`,	i+100,	1100, color, '60pt Menlo')
 				
 			}
 			i += 250
@@ -364,9 +411,9 @@ let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, on
 		text(`Billing: ${billing} (${placed} placed)` , 		5,	 10, "#2A2", '60pt Menlo')
 
 		text("Not Billing: " 		+ nonBillingTotal,			200, 10, "#E00", '60pt Menlo')
-		text("Onsite: " 			+ onsiteNonBilling ,		310, 30, "#22A", '40pt Menlo')
-		text("Pending Start: " 		+ pendingStart ,			390, 30, "#22A", '40pt Menlo')
-		text("Internal Projects: " 	+ internal,					470, 30, "#F96", '40pt Menlo')
+		text("Onsite: " 			+ onsiteNonBilling ,		310, 200, "#22A", '40pt Menlo')
+		text("Pending Start: " 		+ pendingStart ,			390, 200, "#22A", '40pt Menlo')
+		text("Internal Projects: " 	+ internal,					470, 200, "#F96", '40pt Menlo')
 
 	}
 }
@@ -378,7 +425,7 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 	const context = canvas.getContext('2d')
 
 	//Set background
-	context.fillStyle = "#FFF"
+	context.fillStyle = "#dfe3e6"
 	context.fillRect(0,0,width,height)
 
 	let rect = (top, height, color = '#3A3') => {
@@ -394,7 +441,7 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 		context.fillText(text, left + padding, top + padding + 70)
 	}
 	//Main pane
-	rect(0,height,"#FFE")
+	rect(0,height,"#FDFEF9")
 
 	drawFn(rect, text)
 
@@ -444,7 +491,7 @@ let getVacancyReport = async(listsAndCards)=>{
 		})
 	})
 	
-	return _.sortBy(vacancies, ['projectStartDate'])
+	return _.sortBy(vacancies, ['startDate'])
 
 }
 
