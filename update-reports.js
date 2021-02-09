@@ -140,8 +140,8 @@ async function main(){
 						outputReport.totals.onsiteNonBilling,
 					),
 					"billing-" + dateString,
-					1200,
-					600
+					2000,
+					1400
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -425,7 +425,7 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 	const context = canvas.getContext('2d')
 
 	//Set background
-	context.fillStyle = "#dfe3e6"
+	context.fillStyle = "#222222"
 	context.fillRect(0,0,width,height)
 
 	let rect = (top, height, color = '#3A3') => {
@@ -441,7 +441,7 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 		context.fillText(text, left + padding, top + padding + 70)
 	}
 	//Main pane
-	rect(0,height,"#FDFEF9")
+	rect(0,height,"#fcfeff")
 
 	drawFn(rect, text)
 
@@ -515,6 +515,10 @@ let getStarterReport = async(listsAndCards)=>{
 					} 
 
 					if (label.name == "Backfill Option") {
+						include = false
+					}
+
+					if (label.name == "Vacancy") {
 						include = false
 					}
 				})
