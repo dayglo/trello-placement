@@ -215,11 +215,13 @@ trelloFunctions.getAttachments = async (cardId) => {
 	return await get(`/cards/${cardId}/attachments`)
 } 
 
-trelloFunctions.getAllBoardData = async (boardId) => {
-	let params = {
-		cards: "open",
-		customFieldItems : true 
-	}
+trelloFunctions.getAllBoardData = async (boardId, customFieldNames) => {
+	let cardData = await trelloFunctions.getAllBoardCards(boardId)
+	let lists = await trelloFunctions.getLists()
+	return await trelloFunctions.addCards(lists, cardData, customFieldNames)
+}
+
+trelloFunctions.getAllBoardCards = async (boardId, params = { cards: "open"}) => {
 	let r =  await get(`boards/${boardId}/cards`, params)
 	return r.data
 }
@@ -229,31 +231,25 @@ trelloFunctions.getLists = async () => {
 	return _.map(response.data, _.partialRight(_.pick,["id","name"]))
 }
 
-trelloFunctions.addCards = async (lists, allCards, customFieldNames)=> {
+trelloFunctions.addCards = async (lists, allCards, customFieldNames, checkLists)=> {
 
 	let c = await get(`boards/${boardId}/customFields`)
 	let customFieldData = c.data;
 
 	return Promise.all(
 		lists.map(async (list)=>{
-			let listCards = await get(`lists/${list.id}/cards`)
 
-			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'shortUrl','labels']));
+			let listCards = await get(`lists/${list.id}/cards`, { cards: "open", customFieldItems : true, checklists: "all" })
+
+			let listCards2 = _.map(listCards.data, _.partialRight(_.pick, ['id', 'name', 'shortUrl','labels','checklists','customFieldItems']));
 
 			list.cards = listCards2.map((card) => {
 
-				let lookedUpCard = _.find(allCards, c => {return c.id == card.id})
-				let filteredCard = _.pick(lookedUpCard, ['customFieldItems']);
-
-				if (card.labels.length == 0) {
-					delete card.labels
-				}
-
 				//For each user supplied custom field name, filter for that field only 
-				let customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
+				card.customFieldItems = customFieldNames.reduce( (acc,targetFieldName)=> {
 					let targetField = _.find(customFieldData, f => { return f.name == targetFieldName } )
 					
-					let customField = _.find(filteredCard.customFieldItems, f => {
+					let customField = _.find(card.customFieldItems, f => {
 						
 						if (typeof targetField["id"] == "undefined") {
 							console.error("A custom field you specified isn't on this board")
@@ -271,18 +267,20 @@ trelloFunctions.addCards = async (lists, allCards, customFieldNames)=> {
 					
 				},[])
 
-				if (customFieldItems.length > 0) {
-					filteredCard.customFieldItems = customFieldItems
-				} else {
-					delete filteredCard.customFieldItems
-				}
-				
 
-				let result =  {
-					...card,
-					...filteredCard
+				if (card.labels.length == 0) {
+					delete card.labels
 				}
-				return result;
+
+				if (card.checklists.length == 0) {
+					delete card.checklists
+				}
+
+				if (card.customFieldItems.length == 0) {
+					delete card.customFieldItems
+				}
+
+				return card;
 			})
 			return list
 		})

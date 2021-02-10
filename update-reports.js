@@ -37,6 +37,11 @@ if (!("STARTERS_REPORT_CARD" in process.env)) {
     process.exit(1)
 }
 
+if (!("CANDIDATE_REPORT_CARD" in process.env)) {
+    console.log('No CANDIDATE_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
 
 
 let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
@@ -87,11 +92,9 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			//Get Pertinent trello data in a clean intermediate format
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let cardData = await trello.getAllBoardData(boardId)
-			let lists = await trello.getLists()
-			let listsAndCards = await trello.addCards(lists, cardData, ["Project Start Date", "SC","Not SC Eligible", "Skills", "Placement", "Role"])
+			let allBoardData = await trello.getAllBoardData(boardId, ["Project Start Date", "Project End Date", "SC","Not SC Eligible", "Skills", "Role"])
 
-			let listsAndCards2 = listsAndCards.map(l => {
+			let projectListData = allBoardData.map(l => {
 
 				let result = projectNameForName(l.name)
 
@@ -111,7 +114,7 @@ async function main(){
 			})
 
 			title("cleaned data")
-			echo(listsAndCards2)
+			echo(projectListData)
 
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -120,7 +123,7 @@ async function main(){
 			
 			let billingReportCardId = process.env.BILLING_REPORT_CARD || 'XbIkyoda'
 			
-			let outputReport = await makeBillingReport(listsAndCards)
+			let outputReport = await makeBillingReport(projectListData)
 			title("Billing Report")
 			echo(outputReport)
 
@@ -140,8 +143,8 @@ async function main(){
 						outputReport.totals.onsiteNonBilling,
 					),
 					"billing-" + dateString,
-					2000,
-					1400
+					1500,
+					900
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -163,9 +166,54 @@ async function main(){
 			}
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// Candidate Report
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			let candidateReportCardId = process.env.CANDIDATE_REPORT_CARD || 'j2glwngA'
+			
+			let candidateList = await getCandidateList(projectListData)
+
+			title("Candidate Report")
+			echo(candidateList)
+			reportHash = crypto.createHash('md5').update(JSON.stringify(candidateList)).digest('hex')
+
+			if (reportHash == await readHash("/tmp/candidateReport.txt")) {
+				console.log("Candidate report: the hash is the same so don't re-update the board")
+			} else {
+				console.log("Candidate report: re-update the board")
+
+				let imageLocation = createImageFile(
+					candidateTextFn(candidateList),
+					"candidate-" + dateString,
+					2400,
+					40 + (250 * candidateList.length)
+				)[0]
+
+				attachments = await trello.getAttachments(candidateReportCardId)
+				newAttachment = await trello.uploadAttachment(imageLocation, candidateReportCardId)
+				
+				log ("deleting " + attachments.data.length + " old attachments")
+			 	Promise.all(
+					attachments.data.map(a => {
+						return trello.deleteAttachment(candidateReportCardId, a.id)
+					})
+				)
+
+				trello.updateCard(candidateReportCardId,{
+					desc: formatDescription(candidateList),
+					idAttachmentCover: newAttachment.id,
+					name: `Candidates (${candidateList.length})`
+				})
+
+				fsWriteFile("/tmp/candidateReport.txt", reportHash, "utf8")
+			}
+
+
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Move report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let moveReportCardId = process.env.MOVE_REPORT_CARD || 'o5RSYrsE'
+
+			let cardData = await trello.getAllBoardCards(boardId)
 
 			let manualMoveReports = await trello.getFinalMovesForPeriod(boardId, cardData, projectNameForName,7)
 
@@ -198,7 +246,8 @@ async function main(){
 
 				trello.updateCard(moveReportCardId,{
 					desc: formatDescription(manualMoveReports),
-					idAttachmentCover: newAttachment.id
+					idAttachmentCover: newAttachment.id,
+					name: `Manual Moves this week (${manualMoveReports.length})`
 				})
 				
 				fsWriteFile("/tmp/moveReport.txt", reportHash, "utf8")
@@ -209,7 +258,7 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let starterReportCardId = process.env.STARTERS_REPORT_CARD || 'WRU9n5sv'
 
-			let starterReport = await getStarterReport(listsAndCards)
+			let starterReport = await getStarterReport(projectListData)
 			title ("Starters next week")
 			echo(starterReport)
 
@@ -243,7 +292,8 @@ async function main(){
 
 				trello.updateCard(starterReportCardId,{
 					desc: formatDescription(starterReport),
-					idAttachmentCover: newAttachment.id
+					idAttachmentCover: newAttachment.id,
+					name: `Upcoming Starters (${starterReport.length})`
 				})
 
 				fsWriteFile("/tmp/starterReport.txt", reportHash, "utf8")
@@ -251,12 +301,30 @@ async function main(){
 			}
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// Vacancy move checks
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+			// In all vacancy cards with checklists names Candidates
+			// 		If a checklist item with a link in the text is in position 0,
+			//   		Set the link target card's Placement field to "Project X in 2 months"
+			//			If the start date is in the past, and the link target card isnt already in the same list as the vacancy
+			//				Move the target card to the same list as the vacancy
+			//				Set the placement field on the vacancy to "Georgie K two days ago"
+			//			If the start date is over a week ago, archive the vacancy
+			
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// When a vacancy is added
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+			// 	Report - "This is what Ive got to sell" - show all people with either 1) a end-date that is soon; 2) a 'candidate-to-move' label 3) a start date longer than a year ago. 4) new hire label. 5) A positive bumble lookup (in that order)	
+
+
+			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Vacancy report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 	
 			let vacancyReportCardId = process.env.VACANCY_REPORT_CARD || 'yJvcPxXL'
 
-			let vacancyReport = await getVacancyReport(listsAndCards2)
+			let vacancyReport = await getVacancyReport(projectListData)
 			title ("Vacancies coming up")
 			echo(vacancyReport)
 
@@ -290,14 +358,13 @@ async function main(){
 
 				trello.updateCard(vacancyReportCardId,{
 					desc: formatDescription(vacancyReport),
-					idAttachmentCover: newAttachment.id
+					idAttachmentCover: newAttachment.id,
+					name: `Vacancies (${vacancyReport.length})`
 				})
 
 				fsWriteFile("/tmp/vacancyReport.txt", reportHash, "utf8")
 
 			}
-
-
 
 
 			resolve("done")
@@ -308,6 +375,7 @@ async function main(){
 	})
 
 }
+
 
 let starterTextFn = (starters) => {
 	return (rect, text )=>{
@@ -332,7 +400,7 @@ let vacancyTextFn = (vacancies) => {
 			text(`${vacancy.name}`,		i,	 	900, "#131", '60pt Menlo')
 
 			if (vacancy.startDate == null) {
-				text(`No start date`,	i+100,	1100, "#ae017e", '60pt Menlo')
+				text(`No start date`,	i+100,	900, "#ae017e", '60pt Menlo')
 
 			} else {
 
@@ -382,7 +450,7 @@ let vacancyTextFn = (vacancies) => {
 				}
 
 				let friendlyDate = date.formatDistanceToNow(startDate, { addSuffix: true })
-				text(`${friendlyDate}`,	i+100,	1100, color, '60pt Menlo')
+				text(`${friendlyDate}`,	i+100,	900, color, '60pt Menlo')
 				
 			}
 			i += 250
@@ -415,6 +483,22 @@ let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, on
 		text("Pending Start: " 		+ pendingStart ,			390, 200, "#22A", '40pt Menlo')
 		text("Internal Projects: " 	+ internal,					470, 200, "#F96", '40pt Menlo')
 
+	}
+}
+
+
+let candidateTextFn = (candidates) => {
+	return (rect, text )=>{
+		let i = 20
+
+		candidates.forEach(candidate => {
+			text(`${candidate.name}(${candidate.moveScore}) @ ${candidate.currentClient}`,	i,	 	10, "#22A", '40pt Menlo')
+			text(`${candidate.reasons}`,													i+100,	100,"#E00", '40pt Menlo')
+
+			i += 250
+		})
+
+		return i
 	}
 }
 
@@ -451,6 +535,89 @@ let createImageFile = (drawFn, outputFileName, width = 1200, height = 580)=>{
 	return [fileName, buffer]
 
 }
+
+
+let getCandidateList = (listsAndCards)=>{
+
+	//show all people with either 1) a end-date that is soon; 2) a 'candidate-to-move' label 3) a start date longer than a year ago. 4) new hire label. 5) A positive bumble lookup (in that order)	
+
+	let candidates = []
+
+	listsAndCards.forEach((list)=>{
+		list.cards.forEach((card)=>{
+
+			let include = false
+			let reasons = []
+			let moveScore = 0
+
+			if (card["labels"]) {
+				card.labels.forEach((label)=>{
+					if (label.name == "Candidate to Move") {
+						include = true
+						reasons.push( "is a 'candidate to move'")
+						moveScore += 50
+					}
+					if (label.name == "New Joiner") {
+						include = true
+						reasons.push( "is a 'new joiner'")
+						moveScore += 100
+					} 
+				})
+			}
+
+			if (card["customFieldItems"]) {
+				card.customFieldItems.forEach((field)=>{
+					if (field.name == "Project Start Date") {
+						let daysTooLong = 365 * 2
+						let projectStartDate = date.parseISO(field.value.date)
+						// if the date a year ago is after the start date that means theyve been there over a year
+						if (date.compareAsc( date.subDays(new Date(),daysTooLong) ,projectStartDate) == 1) {
+							include = true
+							reasons.push( "has a start date over two years ago")
+							moveScore += 20
+						}
+					}
+
+					if (field.name == "Project End Date") {
+						let projectEndDate = date.parseISO(field.value.date)
+						// if today is after the person's end date minus a month 
+						if (date.compareAsc(new Date(), date.subWeeks(projectEndDate,4) ) == 1) {
+							include = true
+							reasons.push( "has an end date that is soon")
+							moveScore += 20
+						}
+					}
+
+					if (field.name == "Skills") {
+						let skills = ""
+					}
+
+
+				})
+			}
+
+			if (include){
+
+			let candidate = {
+				name: card.name,
+				currentClient: projectNameForName(list.name).name,
+				reasons: reasons.join(", "),
+				moveScore: moveScore
+			}
+
+
+
+			candidates.push(candidate)
+			}
+		})
+	})
+	
+	return _.orderBy(candidates, ['moveScore'],['desc'])
+
+
+	
+}
+
 
 let getVacancyReport = async(listsAndCards)=>{
 	let vacancies = []
@@ -572,7 +739,9 @@ let makeBillingReport = async (lists) => {
 		} else if (list["internal"]) {
 
 			list.cards.forEach((card)=>{
-				report.totals.internal++
+				if (  _.find(card.customFieldItems, ["name", "Role"])  ){
+					report.totals.internal++
+				}
 			})
 
 		} else if (list["project"]) {
@@ -634,7 +803,7 @@ let makeBillingReport = async (lists) => {
 				else {
 
 					// A card represents a placed person.
-					if (hasRoleField || leaveCoverLabel) {
+					if (hasRoleField) {
 
 						projectTotals.consultants.placed++
 
@@ -658,8 +827,8 @@ let makeBillingReport = async (lists) => {
 							})
 						}			
 		
-						if (billing) 						projectTotals.consultants.billing++
-						if (!billing)						projectTotals.consultants.nonBilling++
+						if (billing)  projectTotals.consultants.billing++
+						if (!billing) projectTotals.consultants.nonBilling++
 
 					}
 
