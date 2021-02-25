@@ -22,25 +22,32 @@ if (!("TRELLO_BOARD_ID" in process.env)) {
     process.exit(1)
 }
 
-if (!("BILLING_REPORT_CARD" in process.env)) {
-    console.log('No BILLING_REPORT_CARD has been set.');
-    process.exit(1)
-}
+// if (!("BILLING_REPORT_CARD" in process.env)) {
+//     console.log('No BILLING_REPORT_CARD has been set.');
+//     process.exit(1)
+// }
+// 
+// if (!("MOVE_REPORT_CARD" in process.env)) {
+//     console.log('No MOVE_REPORT_CARD has been set.');
+//     process.exit(1)
+// }
+// 
+// if (!("STARTERS_REPORT_CARD" in process.env)) {
+//     console.log('No STARTERS_REPORT_CARD has been set.');
+//     process.exit(1)
+// }
+// 
+// if (!("CANDIDATE_REPORT_CARD" in process.env)) {
+//     console.log('No CANDIDATE_REPORT_CARD has been set.');
+//     process.exit(1)
+// }
+// 
+// // if (!("VACANCY_REPORT_CARD" in process.env)) {
+// //     console.log('No VACANCY_REPORT_CARD has been set.');
+// //     process.exit(1)
+// // }
 
-if (!("MOVE_REPORT_CARD" in process.env)) {
-    console.log('No MOVE_REPORT_CARD has been set.');
-    process.exit(1)
-}
 
-if (!("STARTERS_REPORT_CARD" in process.env)) {
-    console.log('No STARTERS_REPORT_CARD has been set.');
-    process.exit(1)
-}
-
-if (!("CANDIDATE_REPORT_CARD" in process.env)) {
-    console.log('No CANDIDATE_REPORT_CARD has been set.');
-    process.exit(1)
-}
 
 
 
@@ -49,19 +56,19 @@ let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
 
 
 let projectNameForName = (cardName) => {
-		let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s([\w\s]+)()/) 
+	let matches = cardName.match(/^((p|P)roject|PROJECT)\s.\s([\w\s]+) *(\(.+\))*/) 
 
-		if (matches) {
-			return {
-				replaced: true,
-				name: matches[3].trim()
-			}
-		} else {
-			return {
-				replaced: false,
-				name: cardName
-			}
+	if (matches) {
+		return {
+			replaced: true,
+			name: matches[3].trim()
 		}
+	} else {
+		return {
+			replaced: false,
+			name: cardName
+		}
+	}
 }
 
 let readHash = async (file) => {
@@ -140,6 +147,7 @@ async function main(){
 						outputReport.totals.placed,
 						outputReport.totals.pendingStartDate,
 						outputReport.totals.internal,
+						outputReport.totals.define,
 						outputReport.totals.onsiteNonBilling,
 					),
 					"billing-" + dateString,
@@ -471,7 +479,7 @@ let movesTextFn = (moves) => {
 	}
 }
 
-let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, onsiteNonBilling = 0) => {
+let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, onsiteNonBilling = 0, define = 0) => {
 	return (rect, text )=>{
 
 		let nonBillingTotal = onsiteNonBilling + internal + pendingStart
@@ -482,7 +490,7 @@ let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, on
 		text("Onsite: " 			+ onsiteNonBilling ,		310, 200, "#22A", '40pt Menlo')
 		text("Pending Start: " 		+ pendingStart ,			390, 200, "#22A", '40pt Menlo')
 		text("Internal Projects: " 	+ internal,					470, 200, "#F96", '40pt Menlo')
-
+		text("Define: " 			+ define,					550, 400, "#F96", '40pt Menlo')
 	}
 }
 
@@ -726,8 +734,11 @@ let makeBillingReport = async (lists) => {
 			nonBilling: 0,
 			pendingStartDate: 0,
 			internal: 0,
+			newJoinerNotStarted: 0,
 			onsiteNonBilling: 0,
-			vacancies: 0
+			vacancies: 0,
+			define: 0
+	
 		}
 	}
 
@@ -738,9 +749,36 @@ let makeBillingReport = async (lists) => {
 			// do nothing
 		} else if (list["internal"]) {
 
+			let newJoinerNotStartedYet = false;
+
+
 			list.cards.forEach((card)=>{
 				if (  _.find(card.customFieldItems, ["name", "Role"])  ){
-					report.totals.internal++
+					// if start date is in future dont count, maybe add new joiner label?
+
+					if (card["customFieldItems"]) {
+						card.customFieldItems.forEach((field)=>{
+							if (field.name == "Project Start Date") {
+								let projectStartDate = Date.parse(field.value.date)
+								if (date.compareAsc(Date.now(), projectStartDate) == -1) {
+									// billing = false
+									newJoinerNotStartedYet = true
+				
+								} 
+							} 
+
+						})
+					}
+
+					report.totals.internal++	
+
+					if (newJoinerNotStartedYet) {
+						report.totals.newJoinerNotStartedYet++
+					}
+
+					if (list["name"].startsWith("Define")) {
+						report.totals.define++
+					}
 				}
 			})
 
@@ -754,7 +792,7 @@ let makeBillingReport = async (lists) => {
 					nonBilling: 0,
 					pendingStartDate: 0,
 					onsiteNonBilling: 0,
-					vacancies: 0
+					vacancies: 0,
 				}
 			}
 
@@ -776,7 +814,7 @@ let makeBillingReport = async (lists) => {
 						if (label.name == "Leave Cover") {
 							leaveCoverLabel = true
 						} 
-						if (label.name == "non billing") {
+						if (label.name == "Non Billing") {
 							nonBillingLabel = true;
 						} 
 
@@ -792,7 +830,6 @@ let makeBillingReport = async (lists) => {
 
 				if (  _.find(card.customFieldItems, ["name", "Role"])  ){
 					hasRoleField = true
-
 				}
 
 				if (vacancyLabel) {
@@ -818,7 +855,7 @@ let makeBillingReport = async (lists) => {
 								if (field.name == "Project Start Date") {
 									let projectStartDate = Date.parse(field.value.date)
 									if (date.compareAsc(Date.now(), projectStartDate) == -1) {
-										billing = false
+										// billing = false
 										pendingStartDate = true
 										projectTotals.consultants.pendingStartDate++
 									} 
