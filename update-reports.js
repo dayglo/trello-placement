@@ -13,7 +13,7 @@ const { createCanvas, loadImage } = require('canvas')
 
 
 
-const sheets = require ('./sheets.js')
+// const sheets = require ('./sheets.js')
 
 let log = console.log;
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
@@ -156,27 +156,13 @@ async function main(){
 			} else {
 				console.log("Billing report: re-update the board")
 
-				// let imageLocation = createImageFile(
-				// 	billingTextFn(
-				// 		outputReport.totals.billing,
-				// 		outputReport.totals.placed,
-				// 		outputReport.totals.pendingStartDate,
-				// 		outputReport.totals.internal,
-				// 		outputReport.totals.define,
-				// 		outputReport.totals.onsiteNonBilling,
-				// 	),
-				// 	"billing-" + dateString,
-				// 	1500,
-				// 	900
-				// )[0]
-
 				let imageLocation = createImageFile(
-					billingTextFn2(
+					billingTextFn(
 						outputReport.totals
 					),
 					"billing-" + dateString,
 					1300,
-					1700
+					1400
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -508,22 +494,7 @@ let movesTextFn = (moves) => {
 	}
 }
 
-let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, define = 0, onsiteNonBilling = 0 ) => {
-	return (rect, text )=>{
-
-		let nonBillingTotal = onsiteNonBilling + internal + pendingStart
-
-		text(`Billing: ${billing} (${placed} placed)` , 		5,	 10, "#2A2", '60pt Menlo')
-
-		text("Not Billing: " 		+ nonBillingTotal,			200, 10, "#E00", '60pt Menlo')
-		text("Onsite: " 			+ onsiteNonBilling ,		310, 200, "#22A", '40pt Menlo')
-		text("Pending Start: " 		+ pendingStart ,			390, 200, "#22A", '40pt Menlo')
-		text("Internal Projects: " 	+ internal,					470, 200, "#F96", '40pt Menlo')
-		text("Define: " 			+ define,					550, 400, "#F96", '40pt Menlo')
-	}
-}
-
-let billingTextFn2 = (totals) => {
+let billingTextFn = (totals) => {
 
 	let {onProject, offProject} = totals
 
@@ -535,8 +506,8 @@ let billingTextFn2 = (totals) => {
 		text(`Contractors: ${onProject.contractors}`,			275, 200, "#22A", '40pt Menlo')
 
 		text(`Off Project: ${offProject.total}`,				200 + 310  , 10, "#E00", '60pt Menlo')
-		text(`GCE: ${offProject.GCE}`,							310 + 310 , 200, "#22A", '40pt Menlo')
-		text(`Non Academy: ${offProject.nonAcademy}`,			390 + 310 , 200, "#22A", '40pt Menlo')
+		text(`Lab/GCE: ${offProject.lab.GCE}`,							310 + 310 , 200, "#22A", '40pt Menlo')
+		text(`Lab/Non Academy: ${offProject.lab.nonAcademy}`,			390 + 310 , 200, "#22A", '40pt Menlo')
 		text(`Define: ${offProject.define}`,					470 + 310 , 200, "#F96", '40pt Menlo')
 
 	}
@@ -967,7 +938,6 @@ let makeNewBillingReport = async (lists) => {
 	})
 
 	report.totals = totals
-
 
 	return report
 }
