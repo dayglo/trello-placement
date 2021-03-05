@@ -11,12 +11,24 @@ const fsReadFile = util.promisify(fs.readFile);
 
 const { createCanvas, loadImage } = require('canvas')
 
-const trello = require ('./trello.js')
+
+
 const sheets = require ('./sheets.js')
 
 let log = console.log;
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
 let title = (x) => {console.log(chalk.red(x + "\n---------------------------------------------------------------------"))}
+
+
+if (!("TRELLO_TOKEN" in process.env)) {
+    console.log('No TRELLO_TOKEN has been set.');
+    process.exit(1)
+}
+
+if (!("TRELLO_KEY" in process.env)) {
+    console.log('No TRELLO_KEY has been set.');
+    process.exit(1)
+}
 
 if (!("TRELLO_BOARD_ID" in process.env)) {
     console.log('No TRELLO_BOARD_ID has been set.');
@@ -48,11 +60,15 @@ if (!("VACANCY_REPORT_CARD" in process.env)) {
     process.exit(1)
 }
 
-
+let trelloToken = process.env.TRELLO_TOKEN
+let trelloKey = process.env.TRELLO_KEY
 
 
 
 let boardId = process.env.TRELLO_BOARD_ID || "n6VBFMpa"
+
+let trello = require('./trello.js')({trelloToken, trelloKey, trelloBoardId: boardId })
+
 
 
 
@@ -100,18 +116,17 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			//Get Pertinent trello data in a clean intermediate format
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-			let allBoardData = await trello.getAllBoardData(boardId, ["Project Start Date", "Project End Date", "SC","Not SC Eligible", "Skills", "Role"])
+			let allBoardData = await trello.getAllBoardData(["Project Start Date", "Project End Date", "SC","Not SC Eligible", "Skills", "Role"])
 
 			let projectListData = allBoardData.map(l => {
 
 				let result = projectNameForName(l.name)
 
-				if (_.includes(["Reports", "Done", "Actions", "Recruitment"],l.name) ){
+				l.projectName = result.name
+				if (_.includes(["Reports", "Done", "Actions", "Recruitment", "Tests"],l.name) ){
 					//List is a system list
 					l.system = true
 				} else if (result.replaced) {
-					// List is a Billable project
-					l.projectName = result.name
 					l.project = true
 				} else {
 					l.internal = true
@@ -130,7 +145,7 @@ async function main(){
 			
 			let billingReportCardId = process.env.BILLING_REPORT_CARD || 'XbIkyoda'
 			
-			let outputReport = await makeBillingReport(projectListData)
+			let outputReport = await makeNewBillingReport(projectListData)
 			title("Billing Report")
 			echo(outputReport)
 
@@ -141,18 +156,27 @@ async function main(){
 			} else {
 				console.log("Billing report: re-update the board")
 
+				// let imageLocation = createImageFile(
+				// 	billingTextFn(
+				// 		outputReport.totals.billing,
+				// 		outputReport.totals.placed,
+				// 		outputReport.totals.pendingStartDate,
+				// 		outputReport.totals.internal,
+				// 		outputReport.totals.define,
+				// 		outputReport.totals.onsiteNonBilling,
+				// 	),
+				// 	"billing-" + dateString,
+				// 	1500,
+				// 	900
+				// )[0]
+
 				let imageLocation = createImageFile(
-					billingTextFn(
-						outputReport.totals.billing,
-						outputReport.totals.placed,
-						outputReport.totals.pendingStartDate,
-						outputReport.totals.internal,
-						outputReport.totals.define,
-						outputReport.totals.onsiteNonBilling,
+					billingTextFn2(
+						outputReport.totals
 					),
 					"billing-" + dateString,
-					1500,
-					900
+					1300,
+					1700
 				)[0]
 
 				let attachments = await trello.getAttachments(billingReportCardId)
@@ -175,8 +199,6 @@ async function main(){
 				//sheets.write(boardId , outputReport)
 
 			}
-
-			
 
 		
 
@@ -228,9 +250,9 @@ async function main(){
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			let moveReportCardId = process.env.MOVE_REPORT_CARD || 'o5RSYrsE'
 
-			let cardData = await trello.getAllBoardCards(boardId)
+			let cardData = await trello.getAllBoardCards()
 
-			let manualMoveReports = await trello.getFinalMovesForPeriod(boardId, cardData, projectNameForName,7)
+			let manualMoveReports = await trello.getFinalMovesForPeriod(cardData, projectNameForName,7)
 
 			title("Manual Moves this week")
 			echo(manualMoveReports)
@@ -501,6 +523,25 @@ let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, de
 	}
 }
 
+let billingTextFn2 = (totals) => {
+
+	let {onProject, offProject} = totals
+
+	return (rect, text )=>{
+
+		text(`On Project: ${onProject.total}` , 				5,	 10, "#2A2", '60pt Menlo')
+		text(`Billable: ${onProject.billable}`,					115, 200, "#22A", '40pt Menlo')
+		text(`Non Billable: ${onProject.nonBillable}`,			195, 200, "#22A", '40pt Menlo')
+		text(`Contractors: ${onProject.contractors}`,			275, 200, "#22A", '40pt Menlo')
+
+		text(`Off Project: ${offProject.total}`,				200 + 310  , 10, "#E00", '60pt Menlo')
+		text(`GCE: ${offProject.GCE}`,							310 + 310 , 200, "#22A", '40pt Menlo')
+		text(`Non Academy: ${offProject.nonAcademy}`,			390 + 310 , 200, "#22A", '40pt Menlo')
+		text(`Define: ${offProject.define}`,					470 + 310 , 200, "#F96", '40pt Menlo')
+
+	}
+}
+
 
 let candidateTextFn = (candidates) => {
 	return (rect, text )=>{
@@ -729,6 +770,210 @@ let getStarterReport = async(listsAndCards)=>{
 
 }
 
+let hasLabel = (card, labelName) =>{
+
+	if (card["labels"]) {
+		let labelFound = false
+
+		card.labels.forEach((label)=>{
+			if (label.name == labelName) {
+				labelFound = true
+			}
+		})
+
+		return labelFound
+	}
+	else {
+		return false
+	}
+
+}
+
+
+let matchLabel = (card, labelString) =>{
+
+	if (card["labels"]) {
+		let labelMatched = false
+
+		card.labels.forEach((label)=>{
+			if (label.name.match(`${labelString}`)) {
+				labelMatched = true
+			}
+		})
+
+		return labelMatched
+	}
+	else {
+		return false
+	}
+
+}
+
+
+let makeNewBillingReport = async (lists) => {
+
+	let now = Date.now()
+
+	let report = {
+		projects:[],
+
+		totals:{
+			onProject:{
+				total: 0,
+				billable: 0,
+				nonBillable: 0,
+				contractors: 0,
+			},
+			offProject:{
+				total: 0,
+				lab:{
+					total: 0,
+					GCE: 0,
+					nonAcademy: 0
+				},
+				define: 0,
+			}
+		}
+	}
+
+
+	lists.forEach((list)=>{
+
+		let includeThisList = false;
+
+
+		let projectTotals = {
+			project: list.projectName,
+			projectType: null,
+			consultants: {
+				total: 0,
+				billable: 0,
+				nonBillable: 0,
+				contractors: 0,
+				roles:{
+					levels:{
+						SCE: 0
+					},
+					nonAcademy: 0,
+					define: 0,
+				}
+			}
+		}
+
+
+		list.cards.forEach((card)=>{
+
+			//if doesnt have role card and isnt a vacancy card, ignore
+			if ( matchLabel(card,"^Vacancy") ) {
+				
+			} else {
+				let hasRoleField = _.find(card.customFieldItems, ["name", "Role"]) 
+
+				if ( hasRoleField ){
+
+					let role = _.find(card.customFieldItems, ["name", "Role"]).value.text
+
+					if (list["system"]) {
+						// do nothing
+					} else {
+
+						includeThisList = true
+
+						if (typeof projectTotals.consultants.roles.levels[role] !== "number" ){
+							projectTotals.consultants.roles.levels[role] = 0
+						}
+
+						projectTotals.consultants.roles.levels[role]++
+
+						projectTotals.consultants.total++
+
+		 				if (list["internal"]) {
+							//offProject
+							projectTotals.projectType = "internal"
+
+							if (list["name"].startsWith("Define")) {
+								projectTotals.consultants.roles.define++
+
+							} else {
+								if (role !== "GCE") {
+									projectTotals.consultants.roles.nonAcademy++
+								} 
+							}
+
+
+						} else if (list["project"]) {
+							//onProject
+							projectTotals.projectType = "client"
+
+							if (hasLabel(card,"Contractor")){
+								projectTotals.consultants.contractors++
+
+							}
+
+							if (hasLabel(card,"Non Billing")){
+								projectTotals.consultants.nonBillable++
+
+							} else {
+								projectTotals.consultants.billable++
+
+							}
+						}
+
+					}
+				}
+
+			}
+
+		}) 
+
+		if (includeThisList) report.projects.push(projectTotals)
+
+	})
+
+	let totals = report.totals
+
+	report.projects.forEach(project => {
+
+		
+
+		if (project.projectType == "internal"){
+			//off project
+
+			totals.offProject.total +=  project.consultants.total
+			if (project.consultants.roles.define > 0) {
+				//define
+				totals.offProject.define += project.consultants.roles.define
+			} else {
+				//lab
+				totals.offProject.lab.total += project.consultants.total
+				if (typeof project.consultants.roles.levels["GCE"] === "number") {
+					totals.offProject.lab.GCE += project.consultants.roles.levels.GCE
+				}
+
+				for (const [level, count] of Object.entries(project.consultants.roles.levels)) {
+					if (level !== "GCE"){
+						totals.offProject.lab.nonAcademy += count
+					}
+				}
+			}
+
+		} else if (project.projectType == "client"){
+			//on project
+			totals.onProject.total +=  project.consultants.total
+			totals.onProject.billable += project.consultants.billable
+			totals.onProject.nonBillable += project.consultants.nonBillable
+			totals.onProject.contractors += project.consultants.contractors
+		}
+	})
+
+	report.totals = totals
+
+
+	return report
+}
+
+
+
 let makeBillingReport = async (lists) => {
 
 	let now = Date.now()
@@ -747,6 +992,7 @@ let makeBillingReport = async (lists) => {
 			define: 0
 	
 		}
+
 	}
 
 	lists.forEach((list)=>{
