@@ -64,7 +64,7 @@ let makeRequest = async (method,path,data,extraParams) => {
 }
 
 //magic repeater by george
-function repeatUntilResolved(userFunction, resultPredicate, continueOnReject = true, interval = 5, triesLeft = 30) {
+function repeatUntilResolved(userFunction, resultPredicate, continueOnReject = true, interval = 5, triesLeft = 10) {
 	return new Promise(function(resolve, reject) {
 		
 		var waitAndRetry = ()=>{

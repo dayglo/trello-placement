@@ -12,6 +12,7 @@ const fsReadFile = util.promisify(fs.readFile);
 const { createCanvas, loadImage } = require('canvas')
 
 const trello = require ('./trello.js')
+const sheets = require ('./sheets.js')
 
 let log = console.log;
 let echo = (x) => {console.log(JSON.stringify(x,null,2))}
@@ -22,30 +23,30 @@ if (!("TRELLO_BOARD_ID" in process.env)) {
     process.exit(1)
 }
 
-// if (!("BILLING_REPORT_CARD" in process.env)) {
-//     console.log('No BILLING_REPORT_CARD has been set.');
-//     process.exit(1)
-// }
-// 
-// if (!("MOVE_REPORT_CARD" in process.env)) {
-//     console.log('No MOVE_REPORT_CARD has been set.');
-//     process.exit(1)
-// }
-// 
-// if (!("STARTERS_REPORT_CARD" in process.env)) {
-//     console.log('No STARTERS_REPORT_CARD has been set.');
-//     process.exit(1)
-// }
-// 
-// if (!("CANDIDATE_REPORT_CARD" in process.env)) {
-//     console.log('No CANDIDATE_REPORT_CARD has been set.');
-//     process.exit(1)
-// }
-// 
-// // if (!("VACANCY_REPORT_CARD" in process.env)) {
-// //     console.log('No VACANCY_REPORT_CARD has been set.');
-// //     process.exit(1)
-// // }
+if (!("BILLING_REPORT_CARD" in process.env)) {
+    console.log('No BILLING_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("MOVE_REPORT_CARD" in process.env)) {
+    console.log('No MOVE_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("STARTERS_REPORT_CARD" in process.env)) {
+    console.log('No STARTERS_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("CANDIDATE_REPORT_CARD" in process.env)) {
+    console.log('No CANDIDATE_REPORT_CARD has been set.');
+    process.exit(1)
+}
+
+if (!("VACANCY_REPORT_CARD" in process.env)) {
+    console.log('No VACANCY_REPORT_CARD has been set.');
+    process.exit(1)
+}
 
 
 
@@ -123,7 +124,6 @@ async function main(){
 			title("cleaned data")
 			echo(projectListData)
 
-
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Billing Report
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -171,7 +171,14 @@ async function main(){
 				})
 
 				fsWriteFile("/tmp/billingReport.txt", reportHash, "utf8")
+
+				//sheets.write(boardId , outputReport)
+
 			}
+
+			
+
+		
 
 			// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 			// Candidate Report
@@ -479,7 +486,7 @@ let movesTextFn = (moves) => {
 	}
 }
 
-let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, onsiteNonBilling = 0, define = 0) => {
+let billingTextFn = (billing = 0, placed = 0, pendingStart = 0, internal = 0, define = 0, onsiteNonBilling = 0 ) => {
 	return (rect, text )=>{
 
 		let nonBillingTotal = onsiteNonBilling + internal + pendingStart
@@ -638,7 +645,7 @@ let getVacancyReport = async(listsAndCards)=>{
 
 			if (card["labels"]) {
 				card.labels.forEach((label)=>{
-					if (label.name == "Vacancy") {
+					if (label.name.match(/^Vacancy/)) {
 						include = true
 					} 
 				})
@@ -693,7 +700,7 @@ let getStarterReport = async(listsAndCards)=>{
 						include = false
 					}
 
-					if (label.name == "Vacancy") {
+					if (label.name.match(/^Vacancy/)) {
 						include = false
 					}
 				})
@@ -818,7 +825,7 @@ let makeBillingReport = async (lists) => {
 							nonBillingLabel = true;
 						} 
 
-						if (label.name == "Vacancy") {
+						if (label.name.match(/^Vacancy/)) {
 							vacancyLabel = true
 						}
 
