@@ -199,6 +199,97 @@ module.exports = function(params) {
 
 	}
 
+
+
+	let setCustomField = async (cardId,fieldName, value, logText) => {
+
+		let result
+		let inputValueType = typeof value
+
+		if (inputValueType == "object") {
+			if (date.isDate(value)) {
+				inputValueType = "date"
+			} else {
+				console.error("invalid object type provided while trying to set " + fieldName)
+				throw "invalid object type provided while trying to set " + fieldName
+			}
+		}
+
+		let targetField = await trelloFunctions.getCustomFieldDefinitionFromName(fieldName)
+
+
+		console.log(logText)
+		// console.log("setting " + fieldName + " to " + value )
+
+		if (targetField.type == "list") {
+			let validOptions = targetField.options.reduce((acc,option)=>{
+				acc.push(option.value.text)
+				return acc
+			},[])
+
+			if (validOptions.includes(value)) {
+				let selectedOptionId = targetField.options.find(o => o.value.text == value).id
+
+				result = await put(`card/${cardId}/customField/${targetField.id}/item`, {
+					idValue: selectedOptionId
+				})
+
+			} else {
+				let message = "You tried to set " + fieldName + " to " + value + " but the only valid options are " + validOptions
+				console.error(message)
+				throw message
+			}
+		} else if (targetField.type == "text") {
+			if (inputValueType !== "string") {
+				let message = "You tried to set " + fieldName + " to " + value + " but the value you provided was not a string : " + value
+				console.error(message)
+				throw message
+			} else {
+
+				result = await put(`card/${cardId}/customField/${targetField.id}/item`, {
+					value:{text: value}
+				})
+			}
+		} else if (targetField.type == "date") { 
+
+			if (inputValueType !== "date") {
+				let message = "You tried to set " + fieldName + " to " + value + " but the value you provided was not a date : " + value
+				console.error(message)
+				throw message
+			} else {
+				result = await put(`card/${cardId}/customField/${targetField.id}/item`, {
+					value:{date: date.formatISO(value)}
+				})
+			}
+
+		} else if (targetField.type == "number") { 
+			if (inputValueType !== "number") {
+				let message = "You tried to set " + fieldName + " to " + value + " but the value you provided was not a number : " + value
+				console.error(message)
+				throw message
+			} else {
+				result = await put(`card/${cardId}/customField/${targetField.id}/item`, {
+					value:{number: value.toString()}
+				})
+			}
+		} else if (targetField.type == "checkbox") { 
+			if (inputValueType !== "boolean") {
+				let message = "You tried to set " + fieldName + " to " + value + " but the value you provided was not a boolean : " + value
+				console.error(message)
+				throw message
+			} else {
+				result = await put(`card/${cardId}/customField/${targetField.id}/item`, {
+					value:{checked: value.toString()}
+				})
+			}
+		}
+
+		return result
+
+	} 
+
+	trelloFunctions.writeCustomField = setCustomField
+
 	trelloFunctions.setCustomField = async (cardId, customFieldName, customFieldValue = {text: "unset"}) => {
 		try {
 
@@ -279,9 +370,9 @@ module.exports = function(params) {
 	trelloFunctions.getCustomFieldDefinitionFromName = async (customFieldName) => {
 		let response = await get(`boards/${trelloBoardId}/customFields`)
 			
-		let projectStartDateField = response.data.filter(field => {return (field.name == customFieldName)})
+		let field = response.data.filter(field => {return (field.name == customFieldName)})
 		
-		return projectStartDateField[0]
+		return field[0]
 
 	}
 
