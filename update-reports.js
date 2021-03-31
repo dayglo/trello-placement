@@ -186,8 +186,6 @@ async function main(){
 
             }
 
-        
-
             // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
             // Candidate Report
             // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -492,25 +490,38 @@ let billingTextFn = (totals) => {
         text(`Permanent:`,                        355,                200, "#22A", '40pt Barlow')
         text( `${onProject.permanent}`,           355,                900, "#22A", '40pt Barlow')
         text(`Off Project:`,                      200 + 360,          10,  "#E00", '60pt Barlow')
-        text( `${offProject.total}`,              200 + 360,          900,  "#E00", '60pt Barlow')
+        text( `${offProject.total}`,              200 + 360,          900, "#E00", '60pt Barlow')
         text(`Lab/GCE:`,                          310 + 360,          200, "#22A", '40pt Barlow')
         text( `${offProject.lab.GCE}`,            310 + 360,          900, "#22A", '40pt Barlow')
         text(`Lab/Non Academy:`,                  390 + 360,          200, "#22A", '40pt Barlow')
         text( `${offProject.lab.nonAcademy}`,     390 + 360,          900, "#22A", '40pt Barlow')
         text(`Define:`,                           470 + 360,          200, "#F96", '40pt Barlow')
         text( `${offProject.define}`,             470 + 360,          900, "#F96", '40pt Barlow')
-        text(`Vacancies:`,                        200 + 360 + 500,    10,  "#E00", '60pt Barlow')
-        text( `${vacancies.total}`,               200 + 360 + 500,    900, "#E00", '60pt Barlow')
-        text(`Total:`,                            310 + 360 + 500,    200, "#22A", '50pt Barlow')
-        text( `${vacancies.total}`,               310 + 360 + 500,    900, "#22A", '50pt Barlow')
-        text(`Filled:`,                           390 + 360 + 500,    350, "#22A", '40pt Barlow')
-        text( `${vacancies.filled}`,              390 + 360 + 500,    900, "#22A", '40pt Barlow')
-        text(`Pending Start:`,                    470 + 360 + 500,    450, "#22A", '30pt Barlow')
-        text( `${vacancies.filledPendingStart}`,  470 + 360 + 500,    900, "#22A", '30pt Barlow')
-        text(`Late:`,                             550 + 360 + 500,    450, "#22A", '30pt Barlow')
-        text( `${vacancies.filledLate}`,          550 + 360 + 500,    900, "#22A", '30pt Barlow')
-        text(`Unfilled:`,                         620 + 360 + 500,    200, "#F96", '40pt Barlow')
-        text( `${vacancies.unfilled}`,            620 + 360 + 500,    900, "#F96", '40pt Barlow')
+
+        text(`Vacancies:`,                                      200 + 360 + 500,    10,  "#000", '60pt Barlow')
+        text( `${vacancies.total}`,                             200 + 360 + 500,    900, "#000", '60pt Barlow')
+        text(`New Business:`,                                   310 + 360 + 500,    200, "#22A", '50pt Barlow')
+        text( `${vacancies.newBusiness.total}`,                 310 + 360 + 500,    900, "#22A", '50pt Barlow')
+        text(`Filled:`,                                         390 + 360 + 500,    350, "#22A", '40pt Barlow')
+        text( `${vacancies.newBusiness.filled.total}`,          390 + 360 + 500,    900, "#22A", '40pt Barlow')
+        text(`Pending Start:`,                                  450 + 360 + 500,    450, "#22A", '30pt Barlow')
+        text( `${vacancies.newBusiness.filled.pendingStart}`,   450 + 360 + 500,    900, "#22A", '30pt Barlow')
+        text(`Late:`,                                           530 + 360 + 500,    450, "#22A", '30pt Barlow')
+        text( `${vacancies.newBusiness.filled.late}`,           530 + 360 + 500,    900, "#22A", '30pt Barlow')
+        text(`Unfilled:`,                                       620 + 360 + 500,    350, "#F96", '40pt Barlow')
+        text( `${vacancies.newBusiness.unfilled}`,              620 + 360 + 500,    900, "#F96", '40pt Barlow')
+
+        text(`Backfill:`,                                       310 + 360 + 1000,   200, "#22A", '50pt Barlow')
+        text( `${vacancies.backfill.total}`,                    310 + 360 + 1000,   900, "#22A", '50pt Barlow')
+        text(`Filled:`,                                         390 + 360 + 1000,   350, "#22A", '40pt Barlow')
+        text( `${vacancies.backfill.filled.total}`,             390 + 360 + 1000,   900, "#22A", '40pt Barlow')
+        text(`Pending Start:`,                                  450 + 360 + 1000,   450, "#22A", '30pt Barlow')
+        text( `${vacancies.backfill.filled.pendingStart}`,      450 + 360 + 1000,   900, "#22A", '30pt Barlow')
+        text(`Late:`,                                           530 + 360 + 1000,   450, "#22A", '30pt Barlow')
+        text( `${vacancies.backfill.filled.late}`,              530 + 360 + 1000,   900, "#22A", '30pt Barlow')
+        text(`Unfilled:`,                                       620 + 360 + 1000,   350, "#F96", '40pt Barlow')
+        text( `${vacancies.backfill.unfilled}`,                 620 + 360 + 1000,   900, "#F96", '40pt Barlow')
+
     }
 }
 
@@ -943,241 +954,329 @@ let makeHierarchicalBillingReport = async (lists) => {
 }
 
 
-let makeNewBillingReport = async (lists) => {
+let makeNewBillingReport =  (data, today) => {
 
-    let today = Date.now()
+    try{
 
-    let report = {
-        projects:[],
+        let lists = data.reduce((acc, l) => {
 
-        totals:{
-            onProject:{
-                total: 0,
-                billable: 0,
-                nonBillable: 0,
-                contractors: 0,
-                permanent: 0,
-            },
-            offProject:{
-                total: 0,
-                lab:{
+            let result = projectNameForName(l.name)
+
+            l.projectName = result.name
+            if (_.includes(["Reports", "Done", "Actions", "Recruitment", "Tests", "Unrequired Confirmed Vacancies"],l.name) ){
+                //List is a system list
+                l.system = true
+            } else if (result.replaced) {
+                l.project = true
+                acc.push(l)
+            } else {
+                l.internal = true
+                acc.push(l)
+            }
+
+            return acc
+
+        },[])
+
+
+        if (!today) {
+            today = new Date(new Date().setHours(0,0,0,0))
+        } else {
+            today.setHours(0,0,0,0)
+        }
+
+        let report = {
+            projects:[],
+
+            totals:{
+                onProject:{
                     total: 0,
-                    GCE: 0,
-                    nonAcademy: 0
+                    billable: 0,
+                    nonBillable: 0,
+                    contractors: 0,
+                    permanent: 0,
                 },
-                define: 0,
-            },
-            vacancies:{
-                total:0,
-                unfilled:0,
-                filled:0,
-                filledPendingStart:0,
-                filledLate:0,
-            }
-        }
-    }
-
-
-    lists.forEach((list)=>{
-
-        let includeThisList = false;
-
-
-        let projectTotals = {
-            project: list.projectName,
-            projectType: null,
-            consultants: {
-                total: 0,
-                billable: 0,
-                nonBillable: 0,
-                contractors: 0,
-                permanent: 0,
-                roles:{
-                    levels:{
-                        SCE: 0
+                offProject:{
+                    total: 0,
+                    lab:{
+                        total: 0,
+                        GCE: 0,
+                        nonAcademy: 0
                     },
-                    nonAcademy: 0,
                     define: 0,
+                },
+                vacancies:{
+                    total: 0,
+                    newBusiness:{
+                        total:0,
+                        filled:{
+                            pendingStart:0,
+                            late:0
+                        },
+                        unfilled:0,
+                    },
+                     backfill:{
+                        total:0,
+                        filled:{
+                            pendingStart:0,
+                            late:0,
+                        },
+                        unfilled:0,
+                    }
                 }
-            },
-            vacancies:{
-                total:0,
-                unfilled:0,
-                filled:0,
-                filledPendingStart:0,
-                filledLate:0,
             }
-
         }
 
 
-        list.cards.forEach((card)=>{
+        lists.forEach((list)=>{
 
+            let includeThisList = false;
+
+            let projectTotals = {
+                project: list.projectName,
+                projectType: null,
+                consultants: {
+                    total: 0,
+                    billable: 0,
+                    nonBillable: 0,
+                    contractors: 0,
+                    permanent: 0,
+                    newJoinersNotStartedYet: 0,
+                    roles:{
+                        levels:{
+                            SCE: 0
+                        },
+                        nonAcademy: 0,
+                        define: 0,
+                    }
+                },
+                vacancies:{
+                    total: 0,
+                    newBusiness:{
+                        total:0,
+                        filled:{
+                            pendingStart:0,
+                            late:0,
+                        },
+                        unfilled:0,
+                    },
+                    backfill:{
+                        total:0,
+                        filled:{
+                            pendingStart:0,
+                            late:0,
+                        },
+                        unfilled:0,
+                    }
+                }
+
+            }
+
+
+            let getCardVacancyData = (card) => {
+
+                let output = {
+                    filled: {
+                        pendingStart:0,
+                        late:0,
+                    },
+                    unfilled:0,
+                }
+
+                let projectStartDate = getCustomField(card, "Project Start Date")
+                let projectEndDate =   getCustomField(card, "Project End Date")
+
+                let placement = ""
+                let placementText = placement
+                let placementMade = false
+                let placementCustomField = _.find(card.customFieldItems, ["name", "Placement"])
+
+                if (placementCustomField){
+                    placement = placementCustomField.value.text
+                }
+
+                if (placement.match( /^[0-9a-f]{24,32}$/ )) {
+                    otherCard = findCard(lists, placement)
+                    let otherCardPlacement = getCustomField(otherCard, "Placement")
+
+                    placementMade = ( (otherCard.id == placement )  &&  (card.id == otherCardPlacement) )
+                }
+
+                let placementStartDate = "" 
+                let placementEndDate = ""
+                let placementStatus = ""
+                let vacancyStatus = ""
+
+                if (placementMade) {
+                    output.total = 1
+
+                    placementStartDate =  projectStartDate
+                    placementEndDate =  projectEndDate
+                    placementStatus = (date.compareAsc(today, placementStartDate) == 1 ) ? "placed-late" : "placed-pending-start" 
+
+                    if (placementStatus == "placed-late") {
+                        output.filled.late = 1
+                    } else if (placementStatus == "placed-pending-start") {
+                        output.filled.pendingStart = 1
+                    }
+                    
+                    placementText = `${projectNameForName(otherCard.list.name).name}/${otherCard.name}`
+                } else {
+                    output.unfilled = 1
+                }
+                return output
+            }
+
+
+            list.cards.forEach((card)=>{
+
+                let vacancyType = false
+                if (hasLabel(card,"Vacancy(Backfill)")) {
+                    vacancyType = "backfill"
+                } else if (hasLabel(card,"Vacancy")) {
+                    vacancyType = "newBusiness"
+                }
+
+                
+                if (vacancyType !== false) {
+                    // Count vacancies
+                    if (list["project"]) {
+                        cardVacancyData = getCardVacancyData(card)
+
+                        projectTotals.vacancies.total++
+                        projectTotals.vacancies[vacancyType].total++
+                        projectTotals.vacancies[vacancyType].filled.pendingStart += cardVacancyData.filled.pendingStart
+                        projectTotals.vacancies[vacancyType].filled.late +=         cardVacancyData.filled.late
+                        projectTotals.vacancies[vacancyType].unfilled +=            cardVacancyData.unfilled 
+
+                    }
+                } else {
+                    // count people 
+                    let hasRoleField = _.find(card.customFieldItems, ["name", "Role"]) 
+
+                    if ( hasRoleField ){
+
+                        let role = _.find(card.customFieldItems, ["name", "Role"]).value.text
+
+                        let newJoiner = hasLabel(card, "New Joiner")
+                        let projectStartDate = getCustomField(card, "Project Start Date")
+
+                        if (newJoiner && date.isBefore(today,projectStartDate) ){
+                            projectTotals.consultants.newJoinersNotStartedYet++
+
+                        } else {
+
+                            if (list["system"]) {
+                                // do nothing
+                            } else {
+
+                                includeThisList = true
+
+                                if (typeof projectTotals.consultants.roles.levels[role] !== "number" ){
+                                    projectTotals.consultants.roles.levels[role] = 0
+                                }
+
+                                projectTotals.consultants.roles.levels[role]++
+
+                                projectTotals.consultants.total++
+
+                                if (list["internal"]) {
+                                    //offProject
+                                    projectTotals.projectType = "internal"
+
+                                    if (list["name"].startsWith("Define")) {
+                                        projectTotals.consultants.roles.define++
+
+                                    } else {
+                                        if (role !== "GCE") {
+                                            projectTotals.consultants.roles.nonAcademy++
+                                        } 
+                                    }
+
+
+                                } else if (list["project"]) {
+                                    //onProject
+                                    projectTotals.projectType = "client"
+
+                                    if (hasLabel(card,"Contractor")){
+                                        projectTotals.consultants.contractors++
+                                    } else {
+                                        projectTotals.consultants.permanent++
+                                    }
+
+                                    if (hasLabel(card,"Non Billing")){
+                                        projectTotals.consultants.nonBillable++
+                                    } else {
+                                        projectTotals.consultants.billable++
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+
+                }
+
+            }) 
+
+            if (includeThisList) report.projects.push(projectTotals)
+
+        })
+
+        let totals = report.totals
+
+        report.projects.forEach(project => {
+
+            if (project.projectType == "internal"){
+                //off project
+
+                totals.offProject.total +=  project.consultants.total
+
+                if (project.consultants.roles.define > 0) {
+                    //define
+                    totals.offProject.define += project.consultants.roles.define
+                } else {
+                    //lab
+                    totals.offProject.lab.total += project.consultants.total
+                    if (typeof project.consultants.roles.levels["GCE"] === "number") {
+                        totals.offProject.lab.GCE += project.consultants.roles.levels.GCE
+                    }
+
+                    for (const [level, count] of Object.entries(project.consultants.roles.levels)) {
+                        if (level !== "GCE"){
+                            totals.offProject.lab.nonAcademy += count
+                        }
+                    }
+                }
+
+            } else if (project.projectType == "client"){
+                //on project
+                totals.onProject.total              += project.consultants.total
+                totals.onProject.billable           += project.consultants.billable
+                totals.onProject.nonBillable        += project.consultants.nonBillable
+                totals.onProject.contractors        += project.consultants.contractors
+                totals.onProject.permanent          += project.consultants.permanent
             
-            if ( hasLabel(card,"Vacancy") ) {
-                if (list["project"]) {
-
-                    includeThisList = true
-                    projectTotals.vacancies.total++
-
-                    let projectStartDate = getCustomField(card, "Project Start Date")
-                    let projectEndDate =   getCustomField(card, "Project End Date")
-
-
-                    let placement = ""
-                    let placementText = placement
-                    let placementMade = false
-                    let placementCustomField = _.find(card.customFieldItems, ["name", "Placement"])
-
-                    if (placementCustomField){
-                        placement = placementCustomField.value.text
-                    }
-
-                    if (placement.match( /^[0-9a-f]{24,32}$/ )) {
-                        otherCard = findCard(lists, placement)
-                        let otherCardPlacement = getCustomField(otherCard, "Placement")
-
-                        placementMade = ( (otherCard.id == placement )  &&  (card.id == otherCardPlacement) )
-                    }
-
-                    let placementStartDate = "" 
-                    let placementEndDate = ""
-                    let placementStatus = ""
-                    let vacancyStatus = ""
-
-                    if (placementMade) {
-                        projectTotals.vacancies.filled++
-    
-                        placementStartDate =  projectStartDate
-                        placementEndDate =  projectEndDate
-                        placementStatus = (date.compareAsc(today, placementStartDate) == 1 ) ? "placed-late" : "placed-pending-start" 
-
-                        if (placementStatus == "placed-late") {
-                            projectTotals.vacancies.filledLate++
-                        } else if (placementStatus == "placed-pending-start") {
-                            projectTotals.vacancies.filledPendingStart++
-                        }
-                        
-                        placementText = `${projectNameForName(otherCard.list.name).name}/${otherCard.name}`
-                    } else {
-                        projectTotals.vacancies.unfilled++
-
-                    }
-
-
-                }
-            } else {
-                let hasRoleField = _.find(card.customFieldItems, ["name", "Role"]) 
-
-                if ( hasRoleField ){
-
-                    let role = _.find(card.customFieldItems, ["name", "Role"]).value.text
-
-                    if (list["system"]) {
-                        // do nothing
-                    } else {
-
-                        includeThisList = true
-
-                        if (typeof projectTotals.consultants.roles.levels[role] !== "number" ){
-                            projectTotals.consultants.roles.levels[role] = 0
-                        }
-
-                        projectTotals.consultants.roles.levels[role]++
-
-                        projectTotals.consultants.total++
-
-                        if (list["internal"]) {
-                            //offProject
-                            projectTotals.projectType = "internal"
-
-                            if (list["name"].startsWith("Define")) {
-                                projectTotals.consultants.roles.define++
-
-                            } else {
-                                if (role !== "GCE") {
-                                    projectTotals.consultants.roles.nonAcademy++
-                                } 
-                            }
-
-
-                        } else if (list["project"]) {
-                            //onProject
-                            projectTotals.projectType = "client"
-
-                            if (hasLabel(card,"Contractor")){
-                                projectTotals.consultants.contractors++
-                            } else {
-                                projectTotals.consultants.permanent++
-                            }
-
-                            if (hasLabel(card,"Non Billing")){
-                                projectTotals.consultants.nonBillable++
-                            } else {
-                                projectTotals.consultants.billable++
-                            }
-                        }
-
-                    }
-                }
-
+                //vacancies
+                totals.vacancies.total              += project.vacancies.total
+                _.forEach(["newBusiness", "backfill"], (vacancyType)=>{
+                    totals.vacancies[vacancyType].total               += project.vacancies[vacancyType].total
+                    totals.vacancies[vacancyType].filled.pendingStart += project.vacancies[vacancyType].filled.pendingStart
+                    totals.vacancies[vacancyType].filled.late         += project.vacancies[vacancyType].filled.late    
+                    totals.vacancies[vacancyType].unfilled            += project.vacancies[vacancyType].unfilled           
+                    
+                    totals.vacancies[vacancyType].filled.total =     totals.vacancies[vacancyType].filled.pendingStart + totals.vacancies[vacancyType].filled.late            
+                }) 
             }
+        })
 
-        }) 
+        report.totals = totals
 
-        if (includeThisList) report.projects.push(projectTotals)
+        return report
 
-    })
-
-    let totals = report.totals
-
-    report.projects.forEach(project => {
-
-        
-
-        if (project.projectType == "internal"){
-            //off project
-
-            totals.offProject.total +=  project.consultants.total
-
-            if (project.consultants.roles.define > 0) {
-                //define
-                totals.offProject.define += project.consultants.roles.define
-            } else {
-                //lab
-                totals.offProject.lab.total += project.consultants.total
-                if (typeof project.consultants.roles.levels["GCE"] === "number") {
-                    totals.offProject.lab.GCE += project.consultants.roles.levels.GCE
-                }
-
-                for (const [level, count] of Object.entries(project.consultants.roles.levels)) {
-                    if (level !== "GCE"){
-                        totals.offProject.lab.nonAcademy += count
-                    }
-                }
-            }
-
-        } else if (project.projectType == "client"){
-            //on project
-            totals.onProject.total              += project.consultants.total
-            totals.onProject.billable           += project.consultants.billable
-            totals.onProject.nonBillable        += project.consultants.nonBillable
-            totals.onProject.contractors        += project.consultants.contractors
-            totals.onProject.permanent          += project.consultants.permanent
-        
-            //vacancies
-            totals.vacancies.total              += project.vacancies.total
-            totals.vacancies.unfilled           += project.vacancies.unfilled
-            totals.vacancies.filled             += project.vacancies.filled
-            totals.vacancies.filledPendingStart += project.vacancies.filledPendingStart
-            totals.vacancies.filledLate         += project.vacancies.filledLate
- 
-        }
-    })
-
-    report.totals = totals
-
-    return report
+    } catch (e) {
+        console.error("Error while compiling Billing Summary " + e)
+    }
 }
 
 
